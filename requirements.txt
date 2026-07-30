@@ -12,6 +12,5 @@ numpy>=1.26.0          # Required by librosa for audio math
 requests>=2.31.0       # Required for MusicBrainz, Last.fm, lrclib, slskd APIs
 deep-translator>=1.11  # Required for translating non-Latin album titles to English
 
-# Optional but Recommended (Uncomment if needed)
-# PyQt6-Qt6-Multimedia  # Required for the built-in audio player and 30-sec previews
-# PyQt6-Qt6-DBus        # Required for Linux MPRIS2 (media keys) integration
+ PyQt6-Qt6-Multimedia  # Required for the built-in audio player and 30-sec previews
+ PyQt6-Qt6-DBus        # Required for Linux MPRIS2 (media keys) integration
