@@ -15,6 +15,8 @@ except ImportError:
 
 APP_NAME = "MusicWatcher"
 ORG_NAME = "MusicWatcher"
+APP_VERSION = "5.2.0"
+GITHUB_REPO = "valkyrie-system/MusicWatcher"
 DATA_DIR = Path.home() / ".musicwatcher"
 ART_DIR  = DATA_DIR / "artwork"
 AUDIO_EXT = {".mp3",".flac",".ogg",".opus",".m4a",".aac",".mp4",".wma",".wav",".aif",".aiff"}

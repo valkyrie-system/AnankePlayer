@@ -24,7 +24,7 @@ except ImportError:
     HAS_DBUS = False
 
 from core.utils import (
-    APP_NAME, ORG_NAME, DATA_DIR, ART_DIR, UNKNOWN, GEO_COUNTRIES, check_squid_health,
+    APP_NAME, ORG_NAME, APP_VERSION, GITHUB_REPO, DATA_DIR, ART_DIR, UNKNOWN, GEO_COUNTRIES, check_squid_health,
     sort_key, fmt_n, stars, fmt_dur, lyrics_emoji, album_lyrics_status, extract_tags,
     should_auto_blacklist, canonical_artist, Notifier
 )
@@ -124,7 +124,7 @@ class MusicWatcher(QMainWindow):
         self._palette_shortcut = QShortcut(QKeySequence("Ctrl+K"), self)
         self._palette_shortcut.activated.connect(self._open_palette)
 
-                # --- New Music Friday Radar ---
+        # --- New Music Friday Radar ---
         self._radar_timer = QTimer(self)
         self._radar_timer.setInterval(6 * 3600 * 1000) # Check every 6 hours
         self._radar_timer.timeout.connect(self._check_new_music_radar)
@@ -183,6 +183,9 @@ class MusicWatcher(QMainWindow):
                 self._dbus_conn.registerService("org.mpris.MediaPlayer2.MusicWatcher")
                 self._dbus_conn.registerObject("/org/mpris/MediaPlayer2", self)
                 self._mpris = MPRISAdaptor(self)
+
+        # NEW: Check for GitHub updates 15 seconds after startup
+        QTimer.singleShot(15000, lambda: self._check_for_updates(silent=True))
 
     def _build_ui(self):
         central=QWidget(); self.setCentralWidget(central)
@@ -1078,7 +1081,7 @@ class MusicWatcher(QMainWindow):
 
             # Preview Button (Pauses main player first!)
             if HAS_MULTIMEDIA:
-            # Route 30-sec preview to the main bottom PlayerBar
+                # Route 30-sec preview to the main bottom PlayerBar
                 pa=menu.addAction("▶  Preview (30-sec)",
                     lambda: self._start_preview_lookup(artist, release))
                 menu.addSeparator()
@@ -1626,6 +1629,46 @@ class MusicWatcher(QMainWindow):
         for p in sorted(self._changed):
             item=QTreeWidgetItem([p]); item.setForeground(0,QColor("#ffdd55"))
             item.setToolTip(0,p); self.changed_tree.addTopLevelItem(item)
+
+    def _check_for_updates(self, silent=True):
+        """Checks GitHub for a new release. If silent=True, it only alerts if an update exists."""
+        def _fetch():
+            try:
+                r = requests.get(f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
+                                 timeout=5, headers={"User-Agent": "MusicWatcher-Updater"})
+                r.raise_for_status()
+                data = r.json()
+                latest_version = data.get("tag_name", "").lstrip("v")
+                release_url = data.get("html_url", "")
+
+                if latest_version:
+                    try:
+                        cur_tup = tuple(map(int, APP_VERSION.split(".")))
+                        new_tup = tuple(map(int, latest_version.split(".")))
+                        is_newer = new_tup > cur_tup
+                    except:
+                        is_newer = False
+
+                    if is_newer:
+                        QTimer.singleShot(0, lambda: self._show_update_dialog(latest_version, release_url))
+                    elif not silent:
+                        QTimer.singleShot(0, lambda: QMessageBox.information(self, "Up to Date", f"You are running the latest version ({APP_VERSION})."))
+            except Exception:
+                if not silent:
+                    QTimer.singleShot(0, lambda: QMessageBox.warning(self, "Update Check Failed", "Could not connect to GitHub to check for updates."))
+
+        threading.Thread(target=_fetch, daemon=True).start()
+
+    def _show_update_dialog(self, latest_version, release_url):
+        msg = f"A new version of MusicWatcher is available!\n\n"
+        msg += f"Current Version: {APP_VERSION}\n"
+        msg += f"Latest Version:  {latest_version}\n\n"
+        msg += "Would you like to open the download page in your browser?"
+        reply = QMessageBox.question(self, "Update Available", msg,
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                     QMessageBox.StandardButton.Yes)
+        if reply == QMessageBox.StandardButton.Yes:
+            webbrowser.open(release_url)
 
     def _start_soulseek_download(self, artist: str, release: str):
         """Initiates the slskd search and download process."""

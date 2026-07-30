@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFileDialog, QTreeWidget,
     QTreeWidgetItem, QLineEdit, QCheckBox, QDialogButtonBox, QSpinBox, QComboBox,
     QGroupBox, QMessageBox, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
-    QListWidget, QListWidgetItem, QFrame, QSlider, QTextBrowser, QWidget
+    QListWidget, QListWidgetItem, QFrame, QSlider, QTextBrowser, QWidget, QTabWidget # <--- ADD QTabWidget HERE
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 from PyQt6.QtGui import QColor
@@ -634,15 +634,25 @@ class SettingsDialog(QDialog):
     def __init__(self, ds, hw, parent=None):
         super().__init__(parent)
         self.setWindowTitle("⚙  MusicWatcher Settings")
-        self.setMinimumWidth(600)
+        self.setMinimumWidth(650)
+        self.setMinimumHeight(550)
         self.ds=ds
 
         main_layout = QVBoxLayout(self)
-        main_layout.setSpacing(12)
+        main_layout.setSpacing(10)
 
-        sys_group = QGroupBox("System & Adaptive Intelligence")
+        # Use a Tab Widget to organize settings
+        tabs = QTabWidget()
+        main_layout.addWidget(tabs)
+
+        # ==========================================
+        # Tab 1: General & Appearance
+        # ==========================================
+        general_tab = QWidget()
+        gl = QVBoxLayout(general_tab)
+
+        sys_group = QGroupBox("System & Maintenance")
         sys_layout = QVBoxLayout(sys_group)
-
         sys_layout.addWidget(QLabel(
             f"💻 Hardware: {hw['cpu']} CPUs · {hw.get('ram_gb', 0):.1f} GB RAM · "
             f"GPU: {hw.get('gpu_name', 'N/A')} ({hw.get('gpu_vendor', 'unknown')})"))
@@ -658,33 +668,78 @@ class SettingsDialog(QDialog):
         le_label.setStyleSheet("background: rgba(127, 127, 127, 0.15); padding: 8px; border-radius: 4px; font-family: monospace;")
         sys_layout.addWidget(le_label)
 
-        reset_btn = QPushButton("⚠  Reset App Database (Wipe All Data)")
-        reset_btn.setObjectName("removeBtn")
-        reset_btn.setFixedHeight(34)
-        reset_btn.clicked.connect(self._trigger_reset)
-        sys_layout.addWidget(reset_btn)
-
-        backup_btn = QPushButton("🗄️  Manage Backups")
-        backup_btn.setObjectName("secondaryBtn")
-        backup_btn.setFixedHeight(34)
-        backup_btn.clicked.connect(self._open_backups)
-        sys_layout.addWidget(backup_btn)
+        update_btn = QPushButton("🔄 Check for Updates")
+        update_btn.setObjectName("secondaryBtn")
+        update_btn.setFixedHeight(34)
+        update_btn.clicked.connect(lambda: self.parent()._check_for_updates(silent=False))
+        sys_layout.addWidget(update_btn)
 
         io_row = QHBoxLayout()
         export_btn = QPushButton("📦 Export Config")
         export_btn.setObjectName("secondaryBtn")
-        export_btn.setFixedHeight(34)
         export_btn.clicked.connect(self._export_config)
         io_row.addWidget(export_btn)
 
         import_btn = QPushButton("📥 Import Config")
         import_btn.setObjectName("secondaryBtn")
-        import_btn.setFixedHeight(34)
         import_btn.clicked.connect(self._import_config)
         io_row.addWidget(import_btn)
+
+        backup_btn = QPushButton("🗄️  Backups")
+        backup_btn.setObjectName("secondaryBtn")
+        backup_btn.clicked.connect(self._open_backups)
+        io_row.addWidget(backup_btn)
         sys_layout.addLayout(io_row)
 
-        main_layout.addWidget(sys_group)
+        reset_btn = QPushButton("⚠  Reset App Database (Wipe All Data)")
+        reset_btn.setObjectName("removeBtn")
+        reset_btn.clicked.connect(self._trigger_reset)
+        sys_layout.addWidget(reset_btn)
+        gl.addWidget(sys_group)
+
+        app_group = QGroupBox("Appearance")
+        app_form = QVBoxLayout(app_group)
+        theme_row = QHBoxLayout(); theme_row.addWidget(QLabel("UI Theme:"))
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItems(sorted(THEMES.keys()))
+        self.theme_combo.setCurrentText(ds.settings.get("theme_name", "Dark"))
+        self.theme_combo.currentTextChanged.connect(lambda t: ds.settings.update({"theme_name": t}))
+        theme_row.addWidget(self.theme_combo, stretch=1)
+        app_form.addLayout(theme_row)
+
+        icon_row = QHBoxLayout(); icon_row.addWidget(QLabel("System tray icon:"))
+        self._icon_ed = QLineEdit(ds.settings.get("tray_icon_path", ""))
+        self._icon_ed.setObjectName("searchBox")
+        self._icon_ed.setPlaceholderText("Default")
+        icon_row.addWidget(self._icon_ed, stretch=1)
+        icon_btn = QPushButton("Browse…")
+        icon_btn.setObjectName("secondaryBtn")
+        def _pick_icon():
+            p, _ = QFileDialog.getOpenFileName(self, "Select Tray Icon", "", "Images (*.png *.jpg *.ico)")
+            if p:
+                self._icon_ed.setText(p)
+                ds.settings.update({"tray_icon_path": p})
+        icon_btn.clicked.connect(_pick_icon)
+        icon_row.addWidget(icon_btn)
+        app_form.addLayout(icon_row)
+
+        fs_row=QHBoxLayout(); fs_row.addWidget(QLabel("Font size:"))
+        sl=QSlider(Qt.Orientation.Horizontal); sl.setRange(10,22)
+        sl.setValue(ds.settings.get("font_size",13))
+        lbl2=QLabel(str(sl.value()))
+        def on_font(v):
+            lbl2.setText(str(v)); ds.settings["font_size"]=v
+        sl.valueChanged.connect(on_font)
+        fs_row.addWidget(sl); fs_row.addWidget(lbl2); app_form.addLayout(fs_row)
+        gl.addWidget(app_group)
+        gl.addStretch()
+        tabs.addTab(general_tab, "General")
+
+        # ==========================================
+        # Tab 2: Library & Metadata
+        # ==========================================
+        lib_tab = QWidget()
+        ll = QVBoxLayout(lib_tab)
 
         perf_group = QGroupBox("Performance & Metadata")
         perf_form = QVBoxLayout(perf_group)
@@ -709,14 +764,23 @@ class SettingsDialog(QDialog):
         chk("Fetch lyrics from lrclib.net", "lyrics_enabled")
         chk("Try alternate lyrics sources if lrclib misses (NetEase)", "lyrics_alt_sources")
         chk("Show MusicBrainz hash & tag metadata in library", "show_mb_data")
-        chk("Auto-organize files dropped into Watch Folder (moves to Artist/Album subfolders)", "auto_organize")
+        chk("Auto-organize files dropped into Watch Folder", "auto_organize")
+        chk("Save cover.jpg/artist.jpg to folders (Plex/Jellyfin)", "save_art_to_folders")
+        chk("Auto-translate non-Latin album titles to English", "translate_titles")
 
-        main_layout.addWidget(perf_group)
+        ll.addWidget(perf_group)
+        ll.addStretch()
+        tabs.addTab(lib_tab, "Library")
 
-        ext_group = QGroupBox("External Services & APIs")
-        ext_form = QVBoxLayout(ext_group)
+        # ==========================================
+        # Tab 3: Network & APIs
+        # ==========================================
+        net_tab = QWidget()
+        nl = QVBoxLayout(net_tab)
 
-        stor=QHBoxLayout(); stor.addWidget(QLabel("Data directory:"))
+        stor_group = QGroupBox("Data Directory")
+        stor_layout = QVBoxLayout(stor_group)
+        stor=QHBoxLayout(); stor.addWidget(QLabel("Path:"))
         self._stor_ed=QLineEdit(ds.settings.get("data_dir",str(DATA_DIR)))
         self._stor_ed.setObjectName("searchBox"); self._stor_ed.setReadOnly(True)
         sbtn=QPushButton("Browse…"); sbtn.setObjectName("secondaryBtn"); sbtn.setFixedHeight(26)
@@ -724,22 +788,14 @@ class SettingsDialog(QDialog):
             d=QFileDialog.getExistingDirectory(self,"Data directory",self._stor_ed.text())
             if d: self._stor_ed.setText(d); ds.settings["data_dir"]=d
         sbtn.clicked.connect(_pick)
-        stor.addWidget(self._stor_ed,stretch=1); stor.addWidget(sbtn); ext_form.addLayout(stor)
+        stor.addWidget(self._stor_ed,stretch=1); stor.addWidget(sbtn)
+        stor_layout.addLayout(stor)
+        nl.addWidget(stor_group)
 
-        gen=QHBoxLayout(); gen.addWidget(QLabel("Genius API key (optional):"))
-        gen_ed=QLineEdit(ds.settings.get("genius_api_key",""))
-        gen_ed.setObjectName("searchBox"); gen_ed.setPlaceholderText("Optional")
-        gen_ed.textChanged.connect(lambda v:ds.settings.update({"genius_api_key":v}))
-        gen.addWidget(gen_ed,stretch=1); ext_form.addLayout(gen)
+        ext_group = QGroupBox("External Services && APIs")
+        ext_form = QVBoxLayout(ext_group)
 
-        ext_player_row = QHBoxLayout(); ext_player_row.addWidget(QLabel("External Player (e.g., strawberry, vlc):"))
-        ext_player_ed = QLineEdit(ds.settings.get("external_player", "strawberry"))
-        ext_player_ed.setObjectName("searchBox")
-        ext_player_ed.textChanged.connect(lambda v: ds.settings.update({"external_player": v}))
-        ext_player_row.addWidget(ext_player_ed, stretch=1)
-        ext_form.addLayout(ext_player_row)
-
-        lb_row=QHBoxLayout(); lb_row.addWidget(QLabel("ListenBrainz User Token:"))
+        lb_row=QHBoxLayout(); lb_row.addWidget(QLabel("ListenBrainz Token:"))
         lb_ed=QLineEdit(ds.settings.get("listenbrainz_token",""))
         lb_ed.setObjectName("searchBox"); lb_ed.setPlaceholderText("For submitting listens")
         lb_ed.textChanged.connect(lambda v:ds.settings.update({"listenbrainz_token":v}))
@@ -780,7 +836,6 @@ class SettingsDialog(QDialog):
 
         lfm_login_btn = QPushButton("🔗 Link Last.fm Account for Scrobbling")
         lfm_login_btn.setObjectName("secondaryBtn")
-        lfm_login_btn.setFixedHeight(28)
         def _link_lastfm():
             cid = ds.settings.get("lastfm_key", "").strip()
             secret = ds.settings.get("lastfm_secret", "").strip()
@@ -817,7 +872,6 @@ class SettingsDialog(QDialog):
         ext_form.addWidget(lfm_login_btn)
 
         test_btn=QPushButton("Test Last.fm Key"); test_btn.setObjectName("secondaryBtn")
-        test_btn.setFixedHeight(28)
         def _test_key():
             key=ds.settings.get("lastfm_key","").strip()
             if not key:
@@ -834,52 +888,40 @@ class SettingsDialog(QDialog):
             lambda v:ds.settings.update({"geo_countries":[c.strip() for c in v.split(",") if c.strip()]}))
         geo_row.addWidget(geo_ed,stretch=1); ext_form.addLayout(geo_row)
 
-        main_layout.addWidget(ext_group)
+        nl.addWidget(ext_group)
+        nl.addStretch()
+        tabs.addTab(net_tab, "Network && APIs")
 
-        app_group = QGroupBox("Appearance")
-        app_form = QVBoxLayout(app_group)
+        # ==========================================
+        # Tab 4: External Apps
+        # ==========================================
+        apps_tab = QWidget()
+        al = QVBoxLayout(apps_tab)
 
-        # New Theme Dropdown
-        theme_row = QHBoxLayout(); theme_row.addWidget(QLabel("UI Theme:"))
-        self.theme_combo = QComboBox()
-        self.theme_combo.addItems(sorted(THEMES.keys()))
-        self.theme_combo.setCurrentText(ds.settings.get("theme_name", "Dark"))
-        self.theme_combo.currentTextChanged.connect(lambda t: ds.settings.update({"theme_name": t}))
-        theme_row.addWidget(self.theme_combo, stretch=1)
-        app_form.addLayout(theme_row)
+        apps_group = QGroupBox("External Applications")
+        apps_form = QVBoxLayout(apps_group)
 
-        icon_row = QHBoxLayout(); icon_row.addWidget(QLabel("System tray icon:"))
-        self._icon_ed = QLineEdit(ds.settings.get("tray_icon_path", ""))
-        self._icon_ed.setObjectName("searchBox")
-        self._icon_ed.setPlaceholderText("Default")
-        icon_row.addWidget(self._icon_ed, stretch=1)
-        icon_btn = QPushButton("Browse…")
-        icon_btn.setObjectName("secondaryBtn")
-        icon_btn.setFixedHeight(26)
-        def _pick_icon():
-            p, _ = QFileDialog.getOpenFileName(self, "Select Tray Icon", "", "Images (*.png *.jpg *.ico)")
-            if p:
-                self._icon_ed.setText(p)
-                ds.settings.update({"tray_icon_path": p})
-        icon_btn.clicked.connect(_pick_icon)
-        icon_row.addWidget(icon_btn)
-        app_form.addLayout(icon_row)
+        ext_player_row = QHBoxLayout(); ext_player_row.addWidget(QLabel("External Player (e.g., strawberry, vlc):"))
+        ext_player_ed = QLineEdit(ds.settings.get("external_player", "strawberry"))
+        ext_player_ed.setObjectName("searchBox")
+        ext_player_ed.textChanged.connect(lambda v: ds.settings.update({"external_player": v}))
+        ext_player_row.addWidget(ext_player_ed, stretch=1)
+        apps_form.addLayout(ext_player_row)
 
-        fs_row=QHBoxLayout(); fs_row.addWidget(QLabel("Font size:"))
-        sl=QSlider(Qt.Orientation.Horizontal); sl.setRange(10,22)
-        sl.setValue(ds.settings.get("font_size",13))
-        lbl2=QLabel(str(sl.value()))
-        def on_font(v):
-            lbl2.setText(str(v)); ds.settings["font_size"]=v
-        sl.valueChanged.connect(on_font)
-        fs_row.addWidget(sl); fs_row.addWidget(lbl2); app_form.addLayout(fs_row)
+        gen=QHBoxLayout(); gen.addWidget(QLabel("Genius API key (optional):"))
+        gen_ed=QLineEdit(ds.settings.get("genius_api_key",""))
+        gen_ed.setObjectName("searchBox"); gen_ed.setPlaceholderText("For lyrics viewer")
+        gen_ed.textChanged.connect(lambda v:ds.settings.update({"genius_api_key":v}))
+        gen.addWidget(gen_ed,stretch=1); apps_form.addLayout(gen)
 
-        main_layout.addWidget(app_group)
+        al.addWidget(apps_group)
+        al.addStretch()
+        tabs.addTab(apps_tab, "External Apps")
 
+        # Bottom OK button
         bb=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
         bb.accepted.connect(self.accept)
         main_layout.addWidget(bb)
-
     def _trigger_reset(self):
         reply = QMessageBox.warning(self, "Confirm Reset",
             "Are you absolutely sure? This will delete your library, caches, blacklists, and learning model. It cannot be undone.",
