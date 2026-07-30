@@ -1,10 +1,10 @@
 directories:
-  incomplete: "/mnt/Terpsichore_II/Music DL/Not Tagged/slskd_incomplete"
-  downloads: "/mnt/Terpsichore_II/Music DL/Not Tagged"
+  incomplete: /your/path
+  downloads: /your/path
 
 shares:
   directories:
-    - "/mnt/Terpsichore_II/Music/"
+    - /your/path
   filters:
     - \.ini$     - Thumbs.db$     - \.DS_Store$
 web:
