@@ -1,3 +1,4 @@
+
 ***
 
 # 🎵 MusicWatcher
@@ -181,6 +182,27 @@ Access via the **⚙ Settings** dialog. Key options include:
 
 ---
 
+## 🔮 Roadmap
+
+Here are the upcoming features planned for future releases:
+
+### 1. 🏷️ Write Audio Analysis to File Tags (Quick Win)
+Right now, the BPM, Key, and Mood are saved in the database, but not written to the actual audio files. We can add a button (or make it automatic) that uses `mutagen` to write `BPM`, `INITIALKEY`, and `MOOD` tags directly to the FLAC/MP3 files. This means DJ software like Rekordbox, Serato, or Mixxx will instantly read that data!
+
+### 2. ⚙️ Customizable Library Organizer Format
+Right now, the Auto-Organizer forces the `Artist/Album/Track - Title.flac` structure. We could add a Settings text field where you can define your own format string (e.g., `[Year] Album/Track - Title` or `Artist - Album/Track. Title`), giving you total control over how your folders are structured.
+
+### 3. 🪟 Floating "Now Playing" Desktop Widget
+We can spawn a small, borderless, always-on-top window (frameless `QWidget`) that sits in the corner of your screen. It would display the current album art, track name, and a scrolling synced lyrics line, acting like a mini Spotify-style overlay while you work.
+
+### 4. 🧹 One-Click "Auto-Fix Missing Tags"
+If you have albums showing up as "Unknown Artist" or "Unknown Album", we can add a right-click menu option: **"🧠 Auto-Fix Tags from MusicBrainz"**. It would take the files, use the existing MBID (or do an acoustic fingerprint lookup), fetch the correct Artist/Album/Tracklist, and automatically write the tags in the background without needing to open the Picard window.
+
+### 5. 📱 Web / Mobile Companion (Advanced)
+We could spin up a tiny local Flask/FastAPI server inside MusicWatcher. This would expose an API on your local network (e.g., `http://192.168.1.x:5000`). You could open a browser on your phone, see your library, and hit "Play" to remotely control the MusicWatcher desktop player.
+
+---
+
 ## 🙏 Credits & Acknowledgements
 
 Built with [PyQt6](https://www.riverbankcomputing.com/software/pyqt/), [Mutagen](https://mutagen.readthedocs.io/), [Librosa](https://librosa.org/), and the wonderful open music APIs (MusicBrainz, ListenBrainz, Last.fm, lrclib.net, Cover Art Archive). Soulseek integration via [slskd](https://github.com/slskd/slskd). Most importantly! tranxuanthang  for their work on [LRCGET](https://github.com/tranxuanthang/lrcget) !
@@ -188,4 +210,3 @@ Built with [PyQt6](https://www.riverbankcomputing.com/software/pyqt/), [Mutagen]
 Released under the **MIT License**.
 
 > “Where words fail, music speaks.” — Hans Christian Andersen
-```
