@@ -6,7 +6,7 @@
 
 **MusicWatcher** is a comprehensive, self-improving desktop music library manager built with PyQt6. It scans your local audio collection, enriches it with metadata from MusicBrainz, Last.fm, and ListenBrainz, fetches synced lyrics, downloads album artwork, detects duplicates by audio-content hashing, and provides a beautiful, adaptive UI for exploring your collection.
 
-> Python 3.10+ · Linux / Windows
+> Python 3.10+ · Linux / Windows / macOS
 
 ---
 
@@ -15,16 +15,15 @@
 ### 📚 Library Management
 - **Parallel multi-threaded scanner** with hardware-adaptive worker counts.
 - Supports **MP3, FLAC, OGG, Opus, M4A, AAC, MP4, WMA, WAV, AIFF**.
-- **Tree and Grid views** with true wrapping `FlowLayout`.
-- **Watch folders** mode — auto-rescans on file changes (3-second debounce).
-- **System tray icon** with minimize-to-tray support.
+- **Tree and Grid views** with true wrapping `FlowLayout` and embedded artwork extraction.
+- **Watch folders** mode — auto-rescans on file changes, with optional auto-organize.
+- **List Filters**: Instantly filter your Library and New Releases tabs by Favorites, Whitelist, or Blacklist.
 
 ### 🎤 Lyrics & Artwork
 - Fetches **synced (.lrc)** and **plain (.txt)** lyrics from [lrclib.net](https://lrclib.net).
 - **Genius lyrics viewer** integration for full lyric pages.
 - **Cover Art Archive** integration for release-group covers.
-- **Embedded artwork extraction** (MP3 `APIC`, FLAC pictures, M4A `covr`).
-- **LRU memory cache** + disk cache for instant UI rendering.
+- **Local Artwork Saving**: Automatically saves `cover.jpg` and `artist.jpg` to album folders for Plex/Jellyfin.
 
 ### 📊 Popularity & Metadata
 - Aggregates listener counts from **ListenBrainz** and **Last.fm**.
@@ -32,10 +31,10 @@
 - **Global & geo rankings** from Last.fm charts.
 - **MusicBrainz caching** (7-day TTL) with rate limiting (~1 req/sec).
 
-### 🆕 New Release Detection
+### 🆕 New Release Detection & Radar
 - Queries **MusicBrainz release-groups** for artists in your library.
+- **New Music Friday Radar**: Background timer that alerts you when favorited artists drop new music.
 - **Auto-translation** of non-Latin album titles.
-- Right-click to **Auto-Download** missing releases via Soulseek (`slskd`).
 
 ### 🗑️ Duplicate Detection
 - **SHA-256 audio-content hashing** (metadata ignored to avoid false positives).
@@ -47,6 +46,7 @@
 - **Synced lyrics display** that follows playback position.
 - **MPRIS2 integration** on Linux (media keys, desktop controls).
 - **Last.fm scrobbling** & **ListenBrainz submitting**.
+- **30-sec Previews**: Search and play 30-second iTunes/Deezer previews directly in the unified player bar.
 
 ---
 
@@ -78,7 +78,38 @@ To use the right-click "Auto-Download" feature, you need [slskd](https://github.
    * Set your Soulseek `username` and `password`.
    * Set the `downloads` directory to match MusicWatcher's Watch Folder.
    * Generate an API key under the `web.api_keys` section.
-3. **Start slskd**: `./slskd`
+3. **Start slskd**: You can run it directly via `./slskd`, or set it up to run permanently in the background as a **systemd service**:
+
+   Create the service file:
+   ```bash
+   mkdir -p ~/.config/systemd/user
+   nano ~/.config/systemd/user/slskd.service
+   ```
+
+   Paste the following configuration (make sure to update the `ExecStart` path to match where you unzipped `slskd`):
+   ```ini
+   [Unit]
+   Description=slskd (Soulseek Daemon)
+   After=network.target
+
+   [Service]
+   Type=simple
+   WorkingDirectory=/path/to/slskd/folder
+   ExecStart=/path/to/slskd/folder/slskd
+   Restart=on-failure
+   RestartSec=5
+
+   [Install]
+   WantedBy=default.target
+   ```
+
+   Enable and start the service:
+   ```bash
+   systemctl --user daemon-reload
+   systemctl --user enable slskd.service
+   systemctl --user start slskd.service
+   ```
+
 4. **Link to MusicWatcher**: Open MusicWatcher → ⚙ Settings → External Services. Enter the `slskd` URL (`http://localhost:5030`) and your API Key.
 
 ---
@@ -90,8 +121,8 @@ musicwatcher/
 ├── main.py                  # Entry point
 ├── core/                    # DataStore, SQLite, LearningEngine, Hardware
 ├── services/                # External APIs (MusicBrainz, Last.fm, Soulseek, Lyrics)
-├── threads/                 # QThread workers (Scanner, Popularity, Artwork)
-└── ui/                      # PyQt6 UI components, Dialogs, Main Window
+├── threads/                 # QThread workers (Scanner, Popularity, Artwork, Analysis)
+└── ui/                      # PyQt6 UI components, Dialogs, Themes, Main Window
 ```
 
 ### Data Directory
@@ -141,10 +172,12 @@ Access via the **⚙ Settings** dialog. Key options include:
 | **External APIs** | Last.fm API Key/Secret | Required for scrobbling & popularity data. |
 | | ListenBrainz Token | Required for submitting listens. |
 | | Slskd URL / API Key | Required for Soulseek auto-downloading. |
+| | External Player | Set executable (e.g., `strawberry`, `vlc`) for right-click sending. |
 | **Performance** | Scan/Lyrics Workers | Parallel tag-reading / lyric-downloading threads. |
 | | SHA-256 Hashing | Duplicate + change detection (audio content only). |
+| | Auto-Organize | Physically reorganize files dropped into the Watch Folder. |
 | **Metadata** | Auto-translate titles | Translate non-Latin album titles to English. |
-| | Audio Analysis | Extract BPM and Key locally via `librosa`. |
+| | Audio Analysis | Extract BPM, Key, and Mood locally via `librosa`. |
 
 ---
 
@@ -155,3 +188,4 @@ Built with [PyQt6](https://www.riverbankcomputing.com/software/pyqt/), [Mutagen]
 Released under the **MIT License**.
 
 > “Where words fail, music speaks.” — Hans Christian Andersen
+```
