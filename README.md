@@ -1,5 +1,3 @@
-Here is the brand new, fully updated `README.md` that reflects the massive v5.1 modular refactor, the new `slskd` auto-download integration, and the local audio analysis features.
-
 ***
 
 # 🎵 MusicWatcher
