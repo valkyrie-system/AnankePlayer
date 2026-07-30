@@ -8,21 +8,7 @@ Here is the brand new, fully updated `README.md` that reflects the massive v5.1 
 
 **MusicWatcher** is a comprehensive, self-improving desktop music library manager built with PyQt6. It scans your local audio collection, enriches it with metadata from MusicBrainz, Last.fm, and ListenBrainz, fetches synced lyrics, downloads album artwork, detects duplicates by audio-content hashing, and provides a beautiful, adaptive UI for exploring your collection.
 
-> **Version 5.1 (Modular Release)** · Python 3.10+ · Linux / Windows / macOS
-
----
-
-## ✨ What's New in v5.1?
-
-This version represents a massive architectural overhaul, transforming a single script into a clean, maintainable 15-file Python package, while introducing powerful new integrations:
-
-*   **🧱 Modular Architecture**: Split into logical layers (`core/`, `services/`, `threads/`, `ui/`) for easier maintenance and faster IDE linting.
-*   **🦑 Soulseek Auto-Download (`slskd`)**: Right-click a missing release in the "New Releases" tab to automatically search for and queue a high-quality FLAC download via a headless Soulseek client. Files drop directly into your Watch Folder and are auto-scanned.
-*   **🧠 ListenBrainz Feedback Loop**: The built-in player now submits your listening history back to ListenBrainz, contributing to the open-source music ecosystem.
-*   **🎚️ Local Audio Analysis**: Extract BPM and estimate Musical Key directly on your machine using `librosa` (no external API required).
-*   **🧠 Adaptive Learning Engine**: The app learns your habits—auto-blacklisting patterns, optimizing scan worker threads, and blending popularity data sources dynamically.
-*   **⌨️ Command Palette**: Press `Ctrl+K` anywhere to fuzzy-search artists, tabs, and actions instantly.
-*   **🗄️ SQLite Database**: Migrated from flat JSON/CSV files to a fast, reliable SQLite backend.
+> Python 3.10+ · Linux / Windows
 
 ---
 
