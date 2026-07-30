@@ -1,0 +1,8 @@
+#!/usr/bin/env xdg-open
+[Desktop Entry]
+Name=MusicWatcher
+Exec=python3 /home/valkyrie-sys/Tools/Unfinished-Projects/musicwatcher/main.py
+Icon=/home/valkyrie-sys/Tools/Unfinished-Projects/musicwatcher/resources/MusicWatcher.png
+Terminal=false
+Type=Application
+Categories=AudioVideo;Audio;
