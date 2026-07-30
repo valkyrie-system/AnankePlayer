@@ -1,0 +1,33 @@
+directories:
+  incomplete: "/mnt/Terpsichore_II/Music DL/Not Tagged/slskd_incomplete"
+  downloads: "/mnt/Terpsichore_II/Music DL/Not Tagged"
+
+shares:
+  directories:
+    - "/mnt/Terpsichore_II/Music/"
+  filters:
+    - \.ini$     - Thumbs.db$     - \.DS_Store$
+web:
+  port: 5030
+  ip_address: 0.0.0.0,[::]
+  https:
+    disabled: true
+  authentication:
+    disabled: false
+    username: slskd
+    password: slskd
+    api_keys:
+      musicwatcher_key:
+        key: "271133xY9zB8cV4mK2pQ7wR1tA6sD5fG"
+        role: readwrite
+        cidr: 0.0.0.0/0,::/0
+
+soulseek:
+  address: vps.slsknet.org
+  port: 2271
+  # IMPORTANT: Put your actual Soulseek username and password here.
+  username:
+  password: 
+  description: |
+    Running slskd via MusicWatcher
+  listen_port: 50300
