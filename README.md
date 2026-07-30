@@ -1,169 +1,173 @@
-# MusicWatcher
+Here is the brand new, fully updated `README.md` that reflects the massive v5.1 modular refactor, the new `slskd` auto-download integration, and the local audio analysis features.
+
+***
+
+# 🎵 MusicWatcher
 
 ![MusicWatcher Logo](MusicWatcher.png)
 
-**MusicWatcher** is a comprehensive music library management tool that scans your local collection, categorizes it, and helps you discover new releases from your favorite artists.
+**MusicWatcher** is a comprehensive, self-improving desktop music library manager built with PyQt6. It scans your local audio collection, enriches it with metadata from MusicBrainz, Last.fm, and ListenBrainz, fetches synced lyrics, downloads album artwork, detects duplicates by audio-content hashing, and provides a beautiful, adaptive UI for exploring your collection.
 
-It features a threaded, non-blocking GUI, integration with [MusicBrainz](https://musicbrainz.org), a framework for lyric fetching, and P2P client integration for discovering new music.
-
----
-
-## Core Features
-
-### Library Scanning 
-- Recursively scans your music directory for `.mp3`, `.flac`, `.m4a`, and `.ogg` files.
-- **Intelligent Resume:** Stop and resume scans from the last file processed.
-- **File Hashing:** Generates and stores SHA256 hashes in `.musicwatcher/directory-hash.json`.
-
-### Categorized View
-- Displays your library by **Artist** and **Album**.
-- Shows counts of synced (`.lrc`) and plain (`.txt`) lyrics per album.
-
-### MusicBrainz Integration
-- Secure OAuth2 login (no manual token pasting).
-- Fetches new album/EP releases for artists in your library.
-- Saves known releases to `known_releases.json` to avoid duplicates.
-- Displays new releases in a dedicated panel—double-click to open the MusicBrainz page.
-
-### P2P Integration
-- Auto-detects **Nicotine+** and **Soulseek** on Linux and Windows.
-- Supports manual path configuration for other clients.
-- **Auto-Search:** Automatically queries supported clients (currently Nicotine+).
-
-### Lyric Fetching Framework
-- Fetches missing lyrics, prioritizing synced `.lrc` files.
-- Overwrites plain `.txt` lyrics if a synced version is found.
-> **Note:** The lyric fetching logic is a placeholder and must be implemented in the `LyricFetcher` class.
+> **Version 5.1 (Modular Release)** · Python 3.10+ · Linux / Windows / macOS
 
 ---
 
-## First-Time Setup
+## ✨ What's New in v5.1?
 
-### Step 1: Register a MusicBrainz Application
-1. Visit [https://musicbrainz.org/account/applications](https://musicbrainz.org/account/applications).
-2. Click **Register your application**.
-3. Fill out the form:
-   - **Name:** `MusicWatcher`
-   - **Type:** `Installed Application`
-   - **Redirect URI:** `http://localhost:9090/oauth_callback`
-4. Click **Register** and copy your **Client ID** and **Client Secret**.
+This version represents a massive architectural overhaul, transforming a single script into a clean, maintainable 15-file Python package, while introducing powerful new integrations:
 
-### Step 2: Configure MusicWatcher
-1. Launch MusicWatcher for the first time (see [Installation](#installation--running)).
-2. Select your main music library folder when prompted.
-3. Click **Set MB Credentials** and paste your Client ID/Secret.
-4. Click **Save**.
-
-### Step 3: Log In
-1. Click **Login to MusicBrainz**.
-2. Approve access in your browser.
-3. You should see `Login Successful!` at `localhost:9090`.
-4. Close the tab and return to MusicWatcher.
+*   **🧱 Modular Architecture**: Split into logical layers (`core/`, `services/`, `threads/`, `ui/`) for easier maintenance and faster IDE linting.
+*   **🦑 Soulseek Auto-Download (`slskd`)**: Right-click a missing release in the "New Releases" tab to automatically search for and queue a high-quality FLAC download via a headless Soulseek client. Files drop directly into your Watch Folder and are auto-scanned.
+*   **🧠 ListenBrainz Feedback Loop**: The built-in player now submits your listening history back to ListenBrainz, contributing to the open-source music ecosystem.
+*   **🎚️ Local Audio Analysis**: Extract BPM and estimate Musical Key directly on your machine using `librosa` (no external API required).
+*   **🧠 Adaptive Learning Engine**: The app learns your habits—auto-blacklisting patterns, optimizing scan worker threads, and blending popularity data sources dynamically.
+*   **⌨️ Command Palette**: Press `Ctrl+K` anywhere to fuzzy-search artists, tabs, and actions instantly.
+*   **🗄️ SQLite Database**: Migrated from flat JSON/CSV files to a fast, reliable SQLite backend.
 
 ---
 
-## Installation & Running
+## 🚀 Core Features
 
-### Linux (Recommended)
+### 📚 Library Management
+- **Parallel multi-threaded scanner** with hardware-adaptive worker counts.
+- Supports **MP3, FLAC, OGG, Opus, M4A, AAC, MP4, WMA, WAV, AIFF**.
+- **Tree and Grid views** with true wrapping `FlowLayout`.
+- **Watch folders** mode — auto-rescans on file changes (3-second debounce).
+- **System tray icon** with minimize-to-tray support.
+
+### 🎤 Lyrics & Artwork
+- Fetches **synced (.lrc)** and **plain (.txt)** lyrics from [lrclib.net](https://lrclib.net).
+- **Genius lyrics viewer** integration for full lyric pages.
+- **Cover Art Archive** integration for release-group covers.
+- **Embedded artwork extraction** (MP3 `APIC`, FLAC pictures, M4A `covr`).
+- **LRU memory cache** + disk cache for instant UI rendering.
+
+### 📊 Popularity & Metadata
+- Aggregates listener counts from **ListenBrainz** and **Last.fm**.
+- **Blended popularity score** with adaptive weighting.
+- **Global & geo rankings** from Last.fm charts.
+- **MusicBrainz caching** (7-day TTL) with rate limiting (~1 req/sec).
+
+### 🆕 New Release Detection
+- Queries **MusicBrainz release-groups** for artists in your library.
+- **Auto-translation** of non-Latin album titles.
+- Right-click to **Auto-Download** missing releases via Soulseek (`slskd`).
+
+### 🗑️ Duplicate Detection
+- **SHA-256 audio-content hashing** (metadata ignored to avoid false positives).
+- **mmap-optimized hashing** for large files.
+- Learning-driven auto-selection of singles to delete when albums exist.
+
+### 🎧 Built-in Audio Player
+- Full **local audio playback** with queue management.
+- **Synced lyrics display** that follows playback position.
+- **MPRIS2 integration** on Linux (media keys, desktop controls).
+- **Last.fm scrobbling** & **ListenBrainz submitting**.
+
+---
+
+## 📦 Installation & Running
+
+### 1. Prerequisites
+Install the required Python libraries:
 ```bash
-chmod +x install_and_run_musicwatcher.sh
-./install_and_run_musicwatcher.sh
+pip install PyQt6 mutagen requests plyer deep-translator librosa numpy
 ```
-This script:
-- Creates a virtual environment (`venv/`)
-- Installs dependencies from `requirements.txt`
-- Launches the app
+*(Optional: `psutil` for better hardware detection, `PyQt6-Qt6-DBus` for Linux MPRIS media keys, `PyQt6-Qt6-Multimedia` for audio playback/previews).*
 
-### Windows / Manual Setup
-1. Install **Python 3.10+**.
-2. Create a virtual environment:
-   ```bash
-   python3 -m venv venv
-   ```
-3. Activate it:
-   - CMD: `venv\Scripts\activate`
-   - PowerShell: `./venv/Scripts/Activate.ps1`
-   - macOS/Linux: `source venv/bin/activate`
-4. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-5. Run the app:
-   ```bash
-   python3 musicwatcher.py
-   ```
-
----
-
-## Requirements
-
+### 2. Launch the App
+Navigate to the `musicwatcher` folder and run:
 ```bash
-pip install -r requirements.txt
+python main.py
 ```
-- PyQt6
-- requests
-- requests-oauthlib
-- musicbrainzngs
-- mutagen
+
+On first launch, MusicWatcher will detect your hardware, optimize FFmpeg/VAAPI environment variables, and create `~/.musicwatcher/` with default settings.
 
 ---
 
-## How to Use
+## 🦑 Setting up Soulseek Auto-Download
 
-### 1. Scan Your Library
-- Click **Start Scan**.
-- Progress bar shows completion.
-- Artist/Album tree populates.
-- Click **Stop Scan** to pause—resumes automatically.
+To use the right-click "Auto-Download" feature, you need [slskd](https://github.com/slskd/slskd) running.
 
-### 2. Fetch Lyrics (Optional)
-- Click **Fetch Missing Lyrics** after scanning.
-- Prioritizes synced `.lrc` files.
-
-### 3. Find New Releases
-- Click **Fetch New Releases**.
-- Queries MusicBrainz for your artists.
-- Displays albums/EPs in the **New Releases** panel.
-
-### 4. Download or Search
-- Double-click a release to open it on MusicBrainz.
-- Auto-searches via your configured P2P client.
+1. **Download slskd** and run it once to generate `~/.local/share/slskd/slskd.yml`.
+2. **Configure `slskd.yml`**:
+   * Set your Soulseek `username` and `password`.
+   * Set the `downloads` directory to match MusicWatcher's Watch Folder.
+   * Generate an API key under the `web.api_keys` section.
+3. **Start slskd**: `./slskd`
+4. **Link to MusicWatcher**: Open MusicWatcher → ⚙ Settings → External Services. Enter the `slskd` URL (`http://localhost:5030`) and your API Key.
 
 ---
 
-## Configuration Files
+## 📁 Project Structure
 
-| File | Purpose |
-|------|----------|
-| `.musicwatcher/directory-hash.json` | Stores SHA256 file hashes |
-| `known_releases.json` | Prevents duplicate release notifications |
-| `musicwatcher_config.json` | Stores user and P2P settings |
+```text
+musicwatcher/
+├── main.py                  # Entry point
+├── core/                    # DataStore, SQLite, LearningEngine, Hardware
+├── services/                # External APIs (MusicBrainz, Last.fm, Soulseek, Lyrics)
+├── threads/                 # QThread workers (Scanner, Popularity, Artwork)
+└── ui/                      # PyQt6 UI components, Dialogs, Main Window
+```
+
+### Data Directory
+All user data is safely stored in `~/.musicwatcher/`:
+```text
+~/.musicwatcher/
+├── musicwatcher.db          # SQLite database (library, caches, lists)
+├── settings.json            # User preferences
+├── artwork/                 # Cached cover art
+├── learning/
+│   └── model.json           # Adaptive learning model state
+├── backups/                 # Timestamped auto-backups (last 5 kept)
+└── error.log                # Unhandled exception log
+```
+
+---
+
+## 🛠️ Packaging & Distribution
+
+MusicWatcher includes a PyInstaller spec file to easily build standalone executables.
+
+### Build Native Executable
+```bash
+pip install pyinstaller
+pyinstaller musicwatcher.spec
+```
+*Output: `dist/MusicWatcher/MusicWatcher` (or `.exe` on Windows).*
+
+### Build Linux AppImage
+Use the included `appimagetool` to wrap the PyInstaller output into a portable AppImage:
+```bash
+mkdir -p MusicWatcher.AppDir/usr/bin
+cp -r dist/MusicWatcher/* MusicWatcher.AppDir/usr/bin/
+printf '#!/bin/sh\nHERE="$(dirname "$(readlink -f "${0}")")"\nexec "${HERE}/usr/bin/MusicWatcher" "$@"\n' > MusicWatcher.AppDir/AppRun
+chmod +x MusicWatcher.AppDir/AppRun
+./appimagetool-x86_64.AppImage MusicWatcher.AppDir MusicWatcher.AppImage
+```
 
 ---
 
-## Notes
+## ⚙️ Configuration
 
-- **Active development:** features may change.
-- Lyric fetching framework pending full implementation.
-- Feedback, issues, and PRs are welcome.
+Access via the **⚙ Settings** dialog. Key options include:
 
----
-
-## License
-
-Released under the **MIT License**.  
-See [`LICENSE`](LICENSE) for details.
-
----
-
-## Acknowledgements
-
-- [MusicBrainz](https://musicbrainz.org)
-- [Nicotine+](https://nicotine-plus.org/)
-- [Soulseek](https://www.slsknet.org/)
-- Python open-source community
+| Section | Feature | Description |
+|---------|---------|-------------|
+| **External APIs** | Last.fm API Key/Secret | Required for scrobbling & popularity data. |
+| | ListenBrainz Token | Required for submitting listens. |
+| | Slskd URL / API Key | Required for Soulseek auto-downloading. |
+| **Performance** | Scan/Lyrics Workers | Parallel tag-reading / lyric-downloading threads. |
+| | SHA-256 Hashing | Duplicate + change detection (audio content only). |
+| **Metadata** | Auto-translate titles | Translate non-Latin album titles to English. |
+| | Audio Analysis | Extract BPM and Key locally via `librosa`. |
 
 ---
+
+## 🙏 Credits & Acknowledgements
+
+Built with [PyQt6](https://www.riverbankcomputing.com/software/pyqt/), [Mutagen](https://mutagen.readthedocs.io/), [Librosa](https://librosa.org/), and the wonderful open music APIs (MusicBrainz, ListenBrainz, Last.fm, lrclib.net, Cover Art Archive). Soulseek integration via [slskd](https://github.com/slskd/slskd).
+
+Released under the **MIT License**.
 
 > “Where words fail, music speaks.” — Hans Christian Andersen
-
