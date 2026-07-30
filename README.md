@@ -150,7 +150,7 @@ Access via the **⚙ Settings** dialog. Key options include:
 
 ## 🙏 Credits & Acknowledgements
 
-Built with [PyQt6](https://www.riverbankcomputing.com/software/pyqt/), [Mutagen](https://mutagen.readthedocs.io/), [Librosa](https://librosa.org/), and the wonderful open music APIs (MusicBrainz, ListenBrainz, Last.fm, lrclib.net, Cover Art Archive). Soulseek integration via [slskd](https://github.com/slskd/slskd). Most importantly! tranxuanthang  for their work on LRCGET! [LRCGET](https://github.com/tranxuanthang/lrcget)
+Built with [PyQt6](https://www.riverbankcomputing.com/software/pyqt/), [Mutagen](https://mutagen.readthedocs.io/), [Librosa](https://librosa.org/), and the wonderful open music APIs (MusicBrainz, ListenBrainz, Last.fm, lrclib.net, Cover Art Archive). Soulseek integration via [slskd](https://github.com/slskd/slskd). Most importantly! tranxuanthang  for their work on [LRCGET](https://github.com/tranxuanthang/lrcget) !
 
 Released under the **MIT License**.
 
