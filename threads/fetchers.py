@@ -167,6 +167,7 @@ class ArtworkFetcher(QThread, PausableMixin):
 
     def run(self):
         from services.artwork import ArtworkLoader
+        import shutil
         mb_artists = list(self.ds.mb_cache.keys())
         lib_artists = list(self.ds.library.keys())
         all_artists = sorted(list(set(mb_artists + lib_artists)))
@@ -186,6 +187,15 @@ class ArtworkFetcher(QThread, PausableMixin):
                 if not cache_file.exists():
                     loader.get_artist_art(artist, mbid)
                     time.sleep(0.1)
+                # NEW: Save artist.jpg to the artist's folder for Jellyfin/Plex
+                elif self.ds.settings.get("save_art_to_folders", False):
+                    rels = self.ds.library.get(artist, [])
+                    if rels and rels[0].get("files"):
+                        artist_folder = Path(rels[0]["files"][0]).parent.parent
+                        dest_art = artist_folder / "artist.jpg"
+                        if not dest_art.exists():
+                            try: shutil.copy2(cache_file, dest_art)
+                            except: pass
 
             for r in self.ds.library.get(artist, []):
                 if not self._wait(): break
@@ -196,6 +206,13 @@ class ArtworkFetcher(QThread, PausableMixin):
                     if not r_cache.exists():
                         loader.request(r_mbid, f"{CAA_BASE}/release-group/{r_mbid}/front-250")
                         time.sleep(0.1)
+                    # NEW: Save cover.jpg to the album folder for Jellyfin/Plex
+                    elif self.ds.settings.get("save_art_to_folders", False) and files:
+                        album_folder = Path(files[0]).parent
+                        dest_art = album_folder / "cover.jpg"
+                        if not dest_art.exists():
+                            try: shutil.copy2(r_cache, dest_art)
+                            except: pass
                 elif files:
                     import hashlib
                     cache_key = f"embed_{hashlib.md5(files[0].encode()).hexdigest()}"

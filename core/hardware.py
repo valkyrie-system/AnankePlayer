@@ -21,7 +21,7 @@ def setup_logging():
             return
         logging.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
 
-    sys.excepthook = handle_exception
+   # sys.excepthook = handle_exception
 
 def setup_hardware_env() -> dict:
     os.environ["QT_LOGGING_RULES"] = (

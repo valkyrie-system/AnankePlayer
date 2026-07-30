@@ -25,20 +25,23 @@ class NewReleaseChecker(QThread, PausableMixin):
                 self.progress.emit(i,total,artist); continue
             self.progress.emit(i,total,artist)
             try:
+                # Fetch ALL releases for the artist, cache the full list
                 if self.ds.mb_cache_valid(artist):
-                    releases=self.ds.mb_cache[artist].get("releases",[])
+                    all_releases=self.ds.mb_cache[artist].get("releases",[])
                 else:
                     mbid=self._search_artist(artist)
                     if not mbid: continue
-                    releases=self._get_releases(mbid)
+                    all_releases=self._get_releases(mbid)
                     area,urls=self._get_artist_extras(mbid)
-                    self.ds.mb_cache[artist]={"mbid":mbid,"releases":releases,"area":area,"urls":urls,"ts":time.time()}
+                    self.ds.mb_cache[artist]={"mbid":mbid,"releases":all_releases,"area":area,"urls":urls,"ts":time.time()}
                     self.ds.save_mb_cache()
+
                 local_set={e["album"].lower() for e in self.local_lib.get(artist,[]) if e.get("album") and e["album"]!=UNKNOWN}
                 new=[]
-                for r in releases:
+                for r in all_releases:
                     if r["title"].lower() in local_set: continue
                     if TITLE_FEAT_RE.search(r["title"]): continue
+                    # Filter by year AFTER caching
                     try:
                         y=int(r.get("year","0"))
                         if not(self.year_from<=y<=self.year_to): continue

@@ -357,7 +357,10 @@ class LocalPlayer(QObject):
         self.next()
 
     def play_file(self, file_path):
-        self.player.setSource(QUrl.fromLocalFile(file_path))
+        if file_path.startswith("http"):
+            self.player.setSource(QUrl(file_path))
+        else:
+            self.player.setSource(QUrl.fromLocalFile(file_path))
         self.player.play()
 
     def play(self): self.player.play()
@@ -414,38 +417,47 @@ class LocalPlayer(QObject):
     def _load_lrc(self, fp):
         self.current_lrc.clear()
         lrc_file = fp.with_suffix(".lrc")
-        if not lrc_file.exists():
-            self.lyrics_line_changed.emit("")
-            return
+        txt_file = fp.with_suffix(".txt")
 
-        pattern = re.compile(r'\[(\d+):(\d+)(?:\.(\d+))?\](.*)')
-        lines = []
-        try:
-            for line in lrc_file.read_text(encoding="utf-8").splitlines():
-                m = pattern.match(line)
-                if m:
-                    mins = int(m.group(1))
-                    secs = int(m.group(2))
-                    ms = int(m.group(3) or 0) * 10
-                    time = mins * 60000 + secs * 1000 + ms
-                    text = m.group(4).strip()
-                    if text: lines.append((time, text))
-            lines.sort(key=lambda x: x[0])
-            self.current_lrc = lines
-        except: pass
+        if lrc_file.exists():
+            pattern = re.compile(r'\[(\d+):(\d+)(?:\.(\d+))?\](.*)')
+            lines = []
+            try:
+                for line in lrc_file.read_text(encoding="utf-8").splitlines():
+                    m = pattern.match(line)
+                    if m:
+                        mins = int(m.group(1)); secs = int(m.group(2))
+                        ms = int(m.group(3) or 0) * 10
+                        time = mins * 60000 + secs * 1000 + ms
+                        text = m.group(4).strip()
+                        if text: lines.append((time, text))
+                lines.sort(key=lambda x: x[0])
+                self.current_lrc = lines
+            except: pass
+        elif txt_file.exists():
+            # Fallback: If only plain text exists, show the whole thing at time 0
+            try:
+                plain_lyrics = txt_file.read_text(encoding="utf-8").strip()
+                if plain_lyrics:
+                    self.current_lrc = [(0, plain_lyrics)]
+            except: pass
+        else:
+            self.lyrics_line_changed.emit("")
 
 class PlayerBar(QFrame):
     def __init__(self, player: LocalPlayer, parent=None):
         super().__init__(parent)
         self.player = player
         self.setObjectName("previewPlayer")
-        self.setFixedHeight(90)
+        self.setFixedHeight(100) # <--- CHANGED THIS to prevent expanding!
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 4, 8, 4); layout.setSpacing(2)
 
         self.lyrics_label = QLabel("♪ ♫")
         self.lyrics_label.setObjectName("previewLabel")
         self.lyrics_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lyrics_label.setWordWrap(False) # prevent vertical expanding
         layout.addWidget(self.lyrics_label)
 
         ctrl_row = QHBoxLayout()
@@ -474,6 +486,8 @@ class PlayerBar(QFrame):
 
         self.track_label = QLabel("No track loaded")
         self.track_label.setObjectName("previewLabel")
+        self.track_label.setWordWrap(False)
+        self.track_label.setMinimumWidth(200) # Prevent cutoff
         self.track_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         ctrl_row.addWidget(self.track_label, stretch=1)
 

@@ -1,6 +1,12 @@
-import os, sys, re, time, json, threading, datetime, subprocess, webbrowser, hashlib
+import os, sys, re, time, json, threading, datetime, subprocess, webbrowser, hashlib, requests
 from pathlib import Path
 from collections import Counter
+from ui.themes import THEMES
+from ui.dialogs import (
+    DuplicateManagerDialog, ListManagerDialog, TagEditorDialog,
+    PlaylistGeneratorDialog, BackupManagerDialog, SettingsDialog, GeniusViewerDialog,
+    LibraryOrganizerDialog, OrganizerThread
+)
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFileDialog,
     QTreeWidget, QTreeWidgetItem, QLineEdit, QProgressBar, QStatusBar, QListWidget,
@@ -20,7 +26,7 @@ except ImportError:
 from core.utils import (
     APP_NAME, ORG_NAME, DATA_DIR, ART_DIR, UNKNOWN, GEO_COUNTRIES, check_squid_health,
     sort_key, fmt_n, stars, fmt_dur, lyrics_emoji, album_lyrics_status, extract_tags,
-    should_auto_blacklist, canonical_artist
+    should_auto_blacklist, canonical_artist, Notifier
 )
 from core.datastore import DataStore
 from services.lastfm import LastFMScrobbler
@@ -118,6 +124,53 @@ class MusicWatcher(QMainWindow):
         self._palette_shortcut = QShortcut(QKeySequence("Ctrl+K"), self)
         self._palette_shortcut.activated.connect(self._open_palette)
 
+                # --- New Music Friday Radar ---
+        self._radar_timer = QTimer(self)
+        self._radar_timer.setInterval(6 * 3600 * 1000) # Check every 6 hours
+        self._radar_timer.timeout.connect(self._check_new_music_radar)
+        self._radar_timer.start()
+
+        # Fire it once 10 seconds after startup so it doesn't block the UI drawing
+        QTimer.singleShot(10000, self._check_new_music_radar)
+
+    def _check_new_music_radar(self):
+        """Background check for brand new releases from Favorite artists."""
+        if not self.ds.favorites:
+            return  # Don't run if user has no favorites
+
+        today = datetime.datetime.now().date()
+        yesterday = today - datetime.timedelta(days=2)  # Give a 2-day buffer for different timezones
+
+        # reuse the NewReleaseChecker thread
+        self._radar_checker = NewReleaseChecker(
+            list(self.ds.favorites),
+            self.ds,
+            yesterday.year,
+            today.year,
+            self._library
+        )
+
+        def _on_radar_done(artist, releases):
+            # Filter strictly for releases that came out today or yesterday
+            brand_new = []
+            for r in releases:
+                try:
+                    rel_date = datetime.datetime.strptime(r.get("year", "1900"), "%Y-%m-%d").date()
+                    if yesterday <= rel_date <= today:
+                        brand_new.append(r)
+                except Exception:
+                    pass  # If date parsing fails, ignore
+
+            if brand_new:
+                title = f"New Music Alert: {artist}"
+                msg = f"New release out today!\n{', '.join(r['title'] for r in brand_new)}"
+                Notifier.notify(title, msg)
+                if hasattr(self, '_tray') and self._tray.isVisible():
+                    self._tray.showMessage(title, msg, QSystemTrayIcon.MessageSeverity.Information, 10000)
+
+        self._radar_checker.artist_done.connect(_on_radar_done)
+        self._radar_checker.start()
+
         if self._library:
             self._populate_lib_tree(self._library); self._update_btns()
             self.status_bar.showMessage(f"Library loaded from cache — {len(self._library):,} artists.  Data: {DATA_DIR}")
@@ -138,6 +191,8 @@ class MusicWatcher(QMainWindow):
         tb=QHBoxLayout(); tb.setSpacing(6)
         self.theme_btn=QPushButton("☀  Light"); self.theme_btn.setObjectName("toolBtn")
         self.theme_btn.setFixedHeight(30); self.theme_btn.clicked.connect(self._toggle_theme)
+        # Add this line to make the button text dynamic:
+        self.theme_btn.setText("☀  Light" if self.ds.settings.get("theme_name", "Dark") == "Dark" else "🌙  Dark")
         self.view_btn=QPushButton("⊞  Grid"); self.view_btn.setObjectName("toolBtn")
         self.view_btn.setFixedHeight(30); self.view_btn.clicked.connect(self._toggle_view)
         fup=QPushButton("A+"); fup.setObjectName("toolBtn"); fup.setFixedSize(34,30)
@@ -212,7 +267,16 @@ class MusicWatcher(QMainWindow):
         self.lib_min=QSpinBox(); self.lib_min.setRange(0,100_000_000)
         self.lib_min.setSingleStep(10_000); self.lib_min.setFixedWidth(108)
         self.lib_min.valueChanged.connect(self._apply_lib_filter)
-        af.addWidget(self.lib_min); ll.addLayout(af)
+        af.addWidget(self.lib_min)
+
+        # NEW: Library List Filter Dropdown
+        af.addWidget(QLabel("Show:"))
+        self.lib_list_filter = QComboBox()
+        self.lib_list_filter.addItems(["All", "Favorites", "Whitelist", "Blacklist"])
+        self.lib_list_filter.currentIndexChanged.connect(self._apply_lib_filter)
+        af.addWidget(self.lib_list_filter)
+
+        ll.addLayout(af)
 
         self.scan_prog=ProgressWidget("Scan")
         self.scan_prog.pause_toggled.connect(self._on_scan_pause)
@@ -253,7 +317,15 @@ class MusicWatcher(QMainWindow):
         self.check_btn=QPushButton("🔍  Check New Releases")
         self.check_btn.setObjectName("primaryBtn"); self.check_btn.setFixedHeight(36)
         self.check_btn.setEnabled(False); self.check_btn.clicked.connect(self._start_check)
-        cr.addWidget(self.check_btn); cr.addWidget(QLabel("Years:"))
+        cr.addWidget(self.check_btn)
+
+        # NEW: Gap Radar Button
+        self.gap_btn=QPushButton("📉 Find Missing Albums")
+        self.gap_btn.setObjectName("secondaryBtn"); self.gap_btn.setFixedHeight(36)
+        self.gap_btn.setEnabled(False); self.gap_btn.clicked.connect(self._start_gap_radar)
+        cr.addWidget(self.gap_btn)
+
+        cr.addWidget(QLabel("Years:"))
         cur=datetime.datetime.now().year
         self.year_from=QSpinBox(); self.year_from.setRange(1900,2100)
         self.year_from.setValue(cur-1); self.year_from.setFixedWidth(74)
@@ -267,6 +339,14 @@ class MusicWatcher(QMainWindow):
         self.rt_single=QCheckBox("Singles"); self.rt_single.setChecked(True)
         for cb in(self.rt_album,self.rt_ep,self.rt_single):
             cb.stateChanged.connect(self._apply_new_filter); cr.addWidget(cb)
+
+        # NEW: Filter by List dropdown
+        cr.addWidget(QLabel("Filter:"))
+        self.new_list_filter = QComboBox()
+        self.new_list_filter.addItems(["All", "Favorites Only", "Whitelist Only"])
+        self.new_list_filter.currentIndexChanged.connect(self._apply_new_filter)
+        cr.addWidget(self.new_list_filter)
+
         nl.addLayout(cr)
 
         naf=QHBoxLayout(); naf.addWidget(QLabel("Filter artist:"))
@@ -306,8 +386,7 @@ class MusicWatcher(QMainWindow):
         nl.addWidget(self.new_stack)
         nl.addWidget(QLabel(f"MusicBrainz ~1 req/sec · 7-day cache · saved to {DATA_DIR}/new_releases.csv"))
 
-        self.preview_player = PreviewPlayer()
-        nl.addWidget(self.preview_player)
+
         self.tabs.addTab(nt,"New Releases")
 
         # ── Popularity tab ─────────────────────────────────────────────
@@ -366,6 +445,19 @@ class MusicWatcher(QMainWindow):
 
         pl_row = QHBoxLayout()
         pl_row.addStretch()
+
+        self.export_btn = QPushButton("📥 Export Library")
+        self.export_btn.setObjectName("secondaryBtn")
+        self.export_btn.setFixedHeight(34)
+        self.export_btn.clicked.connect(self._open_exporter)
+        pl_row.addWidget(self.export_btn)
+
+        self.organizer_btn = QPushButton("🤖 Library Organizer")
+        self.organizer_btn.setObjectName("secondaryBtn")
+        self.organizer_btn.setFixedHeight(34)
+        self.organizer_btn.clicked.connect(self._open_organizer)
+        pl_row.addWidget(self.organizer_btn)
+
         self.gen_playlist_btn = QPushButton("✨ Smart Playlist")
         self.gen_playlist_btn.setObjectName("secondaryBtn")
         self.gen_playlist_btn.setFixedHeight(34)
@@ -405,11 +497,22 @@ class MusicWatcher(QMainWindow):
         self.status_bar=QStatusBar(); self.setStatusBar(self.status_bar)
         self.status_bar.showMessage(f"Welcome to MusicWatcher  ·  Data: {DATA_DIR}")
 
+    def _open_organizer(self):
+        dlg = LibraryOrganizerDialog(self)
+        dlg.exec()
+
+    def _open_exporter(self):
+        from ui.dialogs import LibraryExporterDialog
+        dlg = LibraryExporterDialog(self.ds, self)
+        dlg.exec()
+
     def _apply_theme(self):
-        dark=self.ds.settings.get("theme","dark")=="dark"
-        self.theme_btn.setText("☀  Light" if dark else "🌙  Dark")
-        self.setStyleSheet(self._css(dark))
-        f=QApplication.instance().font(); f.setPointSize(self.ds.settings.get("font_size",13))
+        # Default to "Dark" if the setting doesn't exist yet
+        current_theme = self.ds.settings.get("theme_name", "Dark")
+        css = THEMES.get(current_theme, THEMES["Dark"])
+        self.setStyleSheet(css)
+        f = QApplication.instance().font()
+        f.setPointSize(self.ds.settings.get("font_size", 13))
         QApplication.instance().setFont(f)
 
     def _css(self, dark: bool) -> str:
@@ -470,9 +573,12 @@ class MusicWatcher(QMainWindow):
                    )
 
     def _toggle_theme(self):
-        t=self.ds.settings.get("theme","dark")
-        self.ds.settings["theme"]="light" if t=="dark" else "dark"
-        self.ds.save_settings(); self._apply_theme()
+        # Simple toggle between Dark and Light for the toolbar button
+        current = self.ds.settings.get("theme_name", "Dark")
+        new_theme = "Light" if current == "Dark" else "Dark"
+        self.ds.settings["theme_name"] = new_theme
+        self.ds.save_settings()
+        self._apply_theme()
 
     def _chg_font(self,d:int):
         sz=max(10,min(22,self.ds.settings.get("font_size",13)+d))
@@ -508,6 +614,9 @@ class MusicWatcher(QMainWindow):
         self.hash_chk.setChecked(self.ds.settings.get("hash_enabled",False))
         self._update_btns()
         self._update_watcher()
+                # NEW: Make sure hash_prog is visible if hashing is enabled
+        if self.ds.settings.get("hash_enabled", False):
+            self.hash_prog.show()
 
     def _open_palette(self):
         dlg = CommandPalette(self._library, self)
@@ -526,6 +635,64 @@ class MusicWatcher(QMainWindow):
             return
         self.local_player.load_queue(target_files, 0)
         self.status_bar.showMessage(f"Playing: {artist} - {album}")
+
+    def _start_preview_lookup(self, artist: str, release: str):
+        """Searches iTunes/Deezer and plays the 30-sec preview in the main player."""
+        if not HAS_MULTIMEDIA:
+            QMessageBox.warning(self, "Multimedia Missing", "PyQt6-Multimedia is not installed.")
+            return
+
+        self.status_bar.showMessage(f"🔍 Searching preview for {artist} - {release}...")
+        self.local_player.pause()
+
+        self._preview_lookup = PreviewLookup(artist, release)
+        self._preview_lookup.found.connect(self._on_preview_found)
+        self._preview_lookup.not_found.connect(lambda a, t: self.status_bar.showMessage(f"❌ No preview found for {a} - {t}"))
+        self._preview_lookup.start()
+
+    def _on_preview_found(self, artist: str, title: str, url: str):
+        self.status_bar.showMessage(f"▶ Playing 30-sec preview: {artist} - {title}")
+        self.local_player.queue = [url]  # Put the URL in the queue
+        self.local_player.current_index = 0
+        self.local_player.play_file(url)
+
+    def _send_to_player(self, files: list):
+        if not files:
+            QMessageBox.information(self, "No Files", "Could not find local audio files for this album.")
+            return
+
+        player = self.ds.settings.get("external_player", "strawberry").strip()
+        if not player:
+            QMessageBox.warning(self, "No Player Set", "Please set your external player executable (e.g., strawberry, vlc) in Settings.")
+            return
+
+        import tempfile
+        tmp_m3u = Path(tempfile.gettempdir()) / "musicwatcher_ext_player.m3u"
+        try:
+            with open(tmp_m3u, "w", encoding="utf-8") as f:
+                f.write("#EXTM3U\n")
+                for p in files:
+                    f.write(f"{p}\n")
+
+            subprocess.Popen([player, str(tmp_m3u)])
+            self.status_bar.showMessage(f"Sent to {player}...")
+        except FileNotFoundError:
+            QMessageBox.warning(self, "Player Not Found", f"Could not find '{player}' in your system PATH. Is it installed?")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to launch {player}: {e}")
+
+    def _open_in_picard(self, files: list):
+        if not files:
+            QMessageBox.information(self, "No Files", "Could not find local audio files for this album.")
+            return
+        try:
+            # Picard accepts a list of files/directories as arguments
+            subprocess.Popen(['picard'] + files)
+            self.status_bar.showMessage("Opening files in MusicBrainz Picard...")
+        except FileNotFoundError:
+            QMessageBox.warning(self, "Picard Not Found", "Could not find 'picard' in your system PATH. Is it installed?")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to launch Picard: {e}")
 
     def _open_tag_editor(self, artist, album):
         releases = self._library.get(artist, [])
@@ -618,6 +785,7 @@ class MusicWatcher(QMainWindow):
                         decade = (int(year_str[:4]) // 10) * 10
                         decade_counter[f"{decade}s"] += 1
                     except: pass
+                # FIXED!
                 genre = r.get("genre", "")
                 if genre:
                     for g in re.split(r'[/,;|]', genre):
@@ -733,15 +901,35 @@ class MusicWatcher(QMainWindow):
         if self._scanner and self._scanner.isRunning():
             self._watch_timer.start()
             return
-        if self._scan_folders:
-            self._auto_scanning = True
+        if not self._scan_folders:
+            return
+
+        self._auto_scanning = True
+
+        # If Auto-Organize is enabled, run the Organizer first, THEN scan
+        if self.ds.settings.get("auto_organize", False):
+            self.status_bar.showMessage("🤖 Auto-organizing watch folder...")
+            # Organize files into the first watch folder (in-place)
+            self._watch_organizer = OrganizerThread(self._scan_folders[0], self._scan_folders[0], move_files=True)
+
+            def _on_organize_done(moved, errors):
+                self.status_bar.showMessage(f"Organized {moved} files. Starting scan...", 3000)
+                self._start_scan()
+
+            def _on_organize_error(err):
+                QMessageBox.warning(self, "Organizer Error", err)
+                self._start_scan() # Scan anyway
+
+            self._watch_organizer.finished.connect(_on_organize_done)
+            self._watch_organizer.start()
+        else:
             self._start_scan()
-            self.status_bar.showMessage("👁 Watch folder updated. Auto-scanning...")
 
     def _update_btns(self):
         has_f=bool(self.folder_panel.get()); has_l=bool(self._library)
         has_n=bool(self._new_releases); has_d=bool(self._duplicates)
         self.scan_btn.setEnabled(has_f); self.check_btn.setEnabled(has_l)
+        self.gap_btn.setEnabled(has_l)  # NEW
         self.lib_pop_btn.setEnabled(has_l); self.new_pop_btn.setEnabled(has_n)
         self.lyrics_btn.setEnabled(has_l and self.ds.settings.get("lyrics_enabled",False))
         self.open_dup_btn.setEnabled(has_d)
@@ -837,8 +1025,26 @@ class MusicWatcher(QMainWindow):
         if item.parent():
             artist=item.parent().text(0).lstrip("★☆ ")
             album=item.text(0).strip()
+
+            # Find the files for this album
+            target_files = []
+            for r in self._library.get(artist, []):
+                if r.get("album", "") == album:
+                    target_files = r.get("files", [])
+                    break
+
             play_action = menu.addAction("▶ Play Album")
             play_action.triggered.connect(lambda: self._play_album(artist, album))
+            menu.addSeparator()
+
+            # NEW: Send to External Player
+            ext_player_action = menu.addAction("🎧 Send to External Player")
+            ext_player_action.triggered.connect(lambda: self._send_to_player(target_files))
+
+            # NEW: Open in Picard
+            picard_action = menu.addAction("🧩 Open in MusicBrainz Picard")
+            picard_action.triggered.connect(lambda: self._open_in_picard(target_files))
+
             menu.addSeparator()
             edit_action = menu.addAction("✏️ Edit Tags")
             edit_action.triggered.connect(lambda: self._open_tag_editor(artist, album))
@@ -869,6 +1075,13 @@ class MusicWatcher(QMainWindow):
             slsk_action.triggered.connect(lambda: self._start_soulseek_download(artist, release))
 
             menu.addSeparator()
+
+            # Preview Button (Pauses main player first!)
+            if HAS_MULTIMEDIA:
+            # Route 30-sec preview to the main bottom PlayerBar
+                pa=menu.addAction("▶  Preview (30-sec)",
+                    lambda: self._start_preview_lookup(artist, release))
+                menu.addSeparator()
 
             self._add_search_actions(menu,artist,release, rtype)
             menu.addAction("📜 View Lyrics on Genius", lambda: self._open_genius(artist, release))
@@ -1057,6 +1270,26 @@ class MusicWatcher(QMainWindow):
         self._checker.error.connect(lambda m:self.status_bar.showMessage(f"⚠ {m}"))
         self._checker.start()
 
+    def _start_gap_radar(self):
+        af=self.new_af.text().strip().lower()
+        artists=[a for a in self._library if a!=UNKNOWN and (not af or af in a.lower()) and not (a in self.ds.blacklist and a not in self.ds.whitelist)]
+        if not artists:
+            QMessageBox.information(self,"No artists","No artists match filter."); return
+        self.new_tree.clear(); self._new_releases.clear(); self._new_pop.clear()
+        self.check_btn.setEnabled(False)
+        self.gap_btn.setEnabled(False)
+        self.check_prog.begin(len(artists)); self.tabs.setCurrentIndex(1)
+
+        # Set year range to 1900 -> current_year + 1 to catch everything
+        cur_year = datetime.datetime.now().year
+        self._checker=NewReleaseChecker(artists, self.ds, 1900, cur_year + 1, self._library)
+        self._checker.progress.connect(self._on_check_prog)
+        self._checker.artist_done.connect(self._on_artist_done)
+        self._checker.finished_all.connect(self._on_check_done)
+        self._checker.status_message.connect(self.status_bar.showMessage)
+        self._checker.error.connect(lambda m:self.status_bar.showMessage(f"⚠ {m}"))
+        self._checker.start()
+
     def _on_check_pause(self,p):
         if self._checker: (self._checker.pause if p else self._checker.resume)()
 
@@ -1192,9 +1425,20 @@ class MusicWatcher(QMainWindow):
         query=self.search_box.text().lower().strip()
         af=self.lib_af.text().lower().strip()
         min_l=self.lib_min.value()
+        filter_mode = self.lib_list_filter.currentText() if hasattr(self, "lib_list_filter") else "All"
+
         filtered={}
         for artist,releases in self._library.items():
             if af and af not in artist.lower(): continue
+
+            # NEW: Apply List Filter
+            if filter_mode == "Favorites":
+                if artist not in self.ds.favorites: continue
+            elif filter_mode == "Whitelist":
+                if artist not in self.ds.whitelist: continue
+            elif filter_mode == "Blacklist":
+                if artist not in self.ds.blacklist: continue
+
             pop=self._popularity.get(artist,{})
             l=pop.get("listeners")
             if l is not None and l<min_l: continue
@@ -1228,8 +1472,15 @@ class MusicWatcher(QMainWindow):
                 lyr_e=lyrics_emoji(r.get("lyr_status","none"))
                 files=r.get("files",[])
                 if files: lyr_e=lyrics_emoji(album_lyrics_status(files))
-                child=QTreeWidgetItem([f"  {r.get('album',UNKNOWN)}",r.get("year",UNKNOWN),r.get("type",""),r.get("genre",""),lyr_e,"",""])
-                child.setForeground(0,QColor("#ccccee")); child.setForeground(1,QColor("#8899bb"))
+
+                # NEW: Fake FLAC Warning Prefix
+                album_text = f"  {r.get('album',UNKNOWN)}"
+                if r.get("is_fake_flac"):
+                    album_text = f"  ⚠️ FAKE FLAC: {r.get('album',UNKNOWN)}"
+
+                child=QTreeWidgetItem([album_text,r.get("year",UNKNOWN),r.get("type",""),r.get("genre",""),lyr_e,"",""])
+                child.setForeground(0,QColor("#ff5555") if r.get("is_fake_flac") else QColor("#ccccee"))
+                child.setForeground(1,QColor("#8899bb"))
                 child.setForeground(2,QColor("#778899")); child.setForeground(3,QColor("#667788"))
                 child.setForeground(4,QColor("#aabb88" if lyr_e=="🎵" else "#aa8855" if lyr_e=="📝" else "#886666"))
                 a_item.addChild(child)
@@ -1237,23 +1488,35 @@ class MusicWatcher(QMainWindow):
         self.tree.expandAll(); self.tree.setSortingEnabled(True)
 
     def _apply_new_filter(self):
-        af=self.new_af.text().lower().strip()
+        af=self.new_af.text().strip().lower()
         min_l=self.new_min.value()
+        filter_mode = self.new_list_filter.currentText() if hasattr(self, "new_list_filter") else "All"
+
         allowed=set()
         if hasattr(self,"rt_album") and self.rt_album.isChecked(): allowed.add("Album")
         if hasattr(self,"rt_ep") and self.rt_ep.isChecked():       allowed.add("EP")
         if hasattr(self,"rt_single") and self.rt_single.isChecked(): allowed.add("Single")
         if not allowed: allowed={"Album","EP","Single"}
+
         filtered={}
         for artist,releases in self._new_releases.items():
             if af and af not in artist.lower(): continue
-            if artist in self.ds.blacklist and artist not in self.ds.whitelist: continue
+
+            # Apply List Filter
+            if filter_mode == "Favorites Only":
+                if artist not in self.ds.favorites: continue
+            elif filter_mode == "Whitelist Only":
+                if artist not in self.ds.whitelist: continue
+            else: # "All"
+                if artist in self.ds.blacklist and artist not in self.ds.whitelist: continue
+
             pop=self._new_pop.get(artist,{})
             l=pop.get("listeners")
             if l is not None and l<min_l: continue
             typed=[r for r in releases if not r.get("type") or r.get("type","") in allowed]
             typed.sort(key=lambda r: self.ds.le.release_sort_key(r.get("type","")))
             if typed: filtered[artist]=typed
+
         favs  ={a:v for a,v in filtered.items() if a in self.ds.favorites}
         others={a:v for a,v in filtered.items() if a not in self.ds.favorites}
         data = {**favs,**others}
@@ -1298,6 +1561,10 @@ class MusicWatcher(QMainWindow):
         self.recs_tree.clear(); self.recs_tree.setSortingEnabled(False)
         recs = Counter()
         for artist, pop in self.ds.pop_cache.items():
+            # NEW: Only build recommendations based on Favorites or Whitelisted artists
+            if artist not in self.ds.favorites and artist not in self.ds.whitelist:
+                continue
+
             for sim in pop.get("similar", []):
                 if sim and sim not in self._library and sim not in self.ds.blacklist:
                     recs[sim] += 1

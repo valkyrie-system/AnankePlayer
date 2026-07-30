@@ -1,12 +1,13 @@
 import os, json, re, csv, hashlib, zipfile, shutil, webbrowser, requests, random
 from pathlib import Path
+from ui.themes import THEMES
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QFileDialog, QTreeWidget,
     QTreeWidgetItem, QLineEdit, QCheckBox, QDialogButtonBox, QSpinBox, QComboBox,
     QGroupBox, QMessageBox, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
-    QListWidget, QListWidgetItem, QFrame, QSlider, QTextBrowser
+    QListWidget, QListWidgetItem, QFrame, QSlider, QTextBrowser, QWidget
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QThread
 from PyQt6.QtGui import QColor
 
 from core.utils import DATA_DIR, ART_DIR, SIDECAR_EXT, LYR_SYNCED, LYR_PLAIN, LYR_NONE, GEO_COUNTRIES, HashSidecar, fmt_dur, mb_get, extract_tags
@@ -708,6 +709,7 @@ class SettingsDialog(QDialog):
         chk("Fetch lyrics from lrclib.net", "lyrics_enabled")
         chk("Try alternate lyrics sources if lrclib misses (NetEase)", "lyrics_alt_sources")
         chk("Show MusicBrainz hash & tag metadata in library", "show_mb_data")
+        chk("Auto-organize files dropped into Watch Folder (moves to Artist/Album subfolders)", "auto_organize")
 
         main_layout.addWidget(perf_group)
 
@@ -729,6 +731,13 @@ class SettingsDialog(QDialog):
         gen_ed.setObjectName("searchBox"); gen_ed.setPlaceholderText("Optional")
         gen_ed.textChanged.connect(lambda v:ds.settings.update({"genius_api_key":v}))
         gen.addWidget(gen_ed,stretch=1); ext_form.addLayout(gen)
+
+        ext_player_row = QHBoxLayout(); ext_player_row.addWidget(QLabel("External Player (e.g., strawberry, vlc):"))
+        ext_player_ed = QLineEdit(ds.settings.get("external_player", "strawberry"))
+        ext_player_ed.setObjectName("searchBox")
+        ext_player_ed.textChanged.connect(lambda v: ds.settings.update({"external_player": v}))
+        ext_player_row.addWidget(ext_player_ed, stretch=1)
+        ext_form.addLayout(ext_player_row)
 
         lb_row=QHBoxLayout(); lb_row.addWidget(QLabel("ListenBrainz User Token:"))
         lb_ed=QLineEdit(ds.settings.get("listenbrainz_token",""))
@@ -829,6 +838,15 @@ class SettingsDialog(QDialog):
 
         app_group = QGroupBox("Appearance")
         app_form = QVBoxLayout(app_group)
+
+        # New Theme Dropdown
+        theme_row = QHBoxLayout(); theme_row.addWidget(QLabel("UI Theme:"))
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItems(sorted(THEMES.keys()))
+        self.theme_combo.setCurrentText(ds.settings.get("theme_name", "Dark"))
+        self.theme_combo.currentTextChanged.connect(lambda t: ds.settings.update({"theme_name": t}))
+        theme_row.addWidget(self.theme_combo, stretch=1)
+        app_form.addLayout(theme_row)
 
         icon_row = QHBoxLayout(); icon_row.addWidget(QLabel("System tray icon:"))
         self._icon_ed = QLineEdit(ds.settings.get("tray_icon_path", ""))
@@ -937,3 +955,220 @@ class GeniusViewerDialog(QDialog):
 
     def _on_error(self, err):
         self.browser.setPlainText(f"⚠ Error: {err}")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Library Organizer Dialog
+# ─────────────────────────────────────────────────────────────────────────────
+
+class OrganizerThread(QThread):
+    progress = pyqtSignal(int, int, str)
+    status_message = pyqtSignal(str)
+    finished = pyqtSignal(int, int)
+
+    def __init__(self, source_dir, dest_dir, move_files=True):
+        super().__init__()
+        self.source_dir = Path(source_dir)
+        self.dest_dir = Path(dest_dir)
+        self.move_files = move_files
+        self.stop_flag = False
+
+    def run(self):
+        from core.utils import AUDIO_EXT, extract_tags
+        files = [p for p in self.source_dir.rglob("*") if p.is_file() and p.suffix.lower() in AUDIO_EXT]
+        total = len(files)
+        moved = 0
+        errors = 0
+
+        for i, fp in enumerate(files):
+            if self.stop_flag: break
+
+            tags = extract_tags(fp)
+            if not tags or tags["artist"] == "Unknown" or tags["album"] == "Unknown":
+                errors += 1
+                continue
+
+            artist = re.sub(r'[\\/:*?"<>|]', '_', tags["artist"])
+            album = re.sub(r'[\\/:*?"<>|]', '_', tags["album"])
+            title = re.sub(r'[\\/:*?"<>|]', '_', tags["title"])
+            track_num = tags.get("tracknumber", "")
+
+            if track_num and "/" in track_num:
+                track_num = track_num.split("/")[0]
+            if track_num and track_num.isdigit():
+                track_num = f"{int(track_num):02d} - "
+            else:
+                track_num = ""
+
+            dest_folder = self.dest_dir / artist / album
+            dest_file = dest_folder / f"{track_num}{title}{fp.suffix.lower()}"
+
+            # NEW: Skip if the file is already organized in the right place
+            if fp == dest_file:
+                continue
+
+            try:
+                if dest_file.exists():
+                    errors += 1
+                    continue
+
+                dest_folder.mkdir(parents=True, exist_ok=True)
+                if self.move_files:
+                    shutil.move(str(fp), str(dest_file))
+                else:
+                    shutil.copy2(str(fp), str(dest_file))
+                moved += 1
+            except Exception:
+                errors += 1
+
+            self.progress.emit(i+1, total, f"{artist} - {title}")
+
+        self.finished.emit(moved, errors)
+
+    def stop(self):
+        self.stop_flag = True
+
+class LibraryOrganizerDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("🤖 Automated Library Organizer")
+        self.setMinimumWidth(550)
+        layout = QVBoxLayout(self)
+
+        layout.addWidget(QLabel("Select a messy folder to scan (e.g., ~/Downloads):"))
+        src_row = QHBoxLayout()
+        self.src_ed = QLineEdit(); self.src_ed.setObjectName("searchBox")
+        src_btn = QPushButton("Browse..."); src_btn.setObjectName("secondaryBtn")
+        src_btn.clicked.connect(lambda: self._pick_dir(self.src_ed))
+        src_row.addWidget(self.src_ed, stretch=1); src_row.addWidget(src_btn)
+        layout.addLayout(src_row)
+
+        layout.addWidget(QLabel("Select destination folder (e.g., ~/Music/Clean_Library):"))
+        dest_row = QHBoxLayout()
+        self.dest_ed = QLineEdit(); self.dest_ed.setObjectName("searchBox")
+        dest_btn = QPushButton("Browse..."); dest_btn.setObjectName("secondaryBtn")
+        dest_btn.clicked.connect(lambda: self._pick_dir(self.dest_ed))
+        dest_row.addWidget(self.dest_ed, stretch=1); dest_row.addWidget(dest_btn)
+        layout.addLayout(dest_row)
+
+        opt_row = QHBoxLayout()
+        self.move_chk = QCheckBox("Move files (uncheck to Copy instead)")
+        self.move_chk.setChecked(True)
+        opt_row.addWidget(self.move_chk); opt_row.addStretch()
+        layout.addLayout(opt_row)
+
+        self.run_btn = QPushButton("▶ Run Organizer")
+        self.run_btn.setObjectName("primaryBtn")
+        self.run_btn.setFixedHeight(36)
+        self.run_btn.clicked.connect(self._run)
+        layout.addWidget(self.run_btn)
+
+        self.prog_bar = QProgressBar(); self.prog_bar.setFixedHeight(30)
+        self.prog_bar.setVisible(False)
+        layout.addWidget(self.prog_bar)
+
+        self.log_lbl = QLabel("")
+        self.log_lbl.setObjectName("progressInfo")
+        layout.addWidget(self.log_lbl)
+
+        self._thread = None
+
+    def _pick_dir(self, ed):
+        d = QFileDialog.getExistingDirectory(self, "Select Directory")
+        if d: ed.setText(d)
+
+    def _run(self):
+        src = self.src_ed.text().strip()
+        dest = self.dest_ed.text().strip()
+        if not src or not dest:
+            QMessageBox.warning(self, "Missing Info", "Please select both source and destination folders.")
+            return
+
+        self.run_btn.setEnabled(False)
+        self.prog_bar.setVisible(True)
+        self.log_lbl.setText("Scanning and organizing...")
+
+        self._thread = OrganizerThread(src, dest, self.move_chk.isChecked())
+        self._thread.progress.connect(self._on_prog)
+        self._thread.finished.connect(self._on_done)
+        self._thread.start()
+
+    def _on_prog(self, done, total, name):
+        self.prog_bar.setMaximum(max(total, 1))
+        self.prog_bar.setValue(done)
+        self.log_lbl.setText(f"Processing: {name}")
+
+    def _on_done(self, moved, errors):
+        self.run_btn.setEnabled(True)
+        self.log_lbl.setText(f"✔ Organized {moved} files. Errors/Skipped: {errors}")
+        QMessageBox.information(self, "Complete", f"Organized {moved} files successfully.\nErrors/Skipped: {errors}")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Library Exporter Dialog
+# ─────────────────────────────────────────────────────────────────────────────
+class LibraryExporterDialog(QDialog):
+    def __init__(self, ds, parent=None):
+        super().__init__(parent)
+        self.ds = ds
+        self.setWindowTitle("📊 Export Library")
+        self.setMinimumWidth(400)
+        layout = QVBoxLayout(self)
+
+        layout.addWidget(QLabel("Export your library data, stats, and popularity to a file."))
+
+        btn_row = QHBoxLayout()
+        csv_btn = QPushButton("📄 Export to CSV")
+        csv_btn.setObjectName("secondaryBtn")
+        csv_btn.clicked.connect(self._export_csv)
+        btn_row.addWidget(csv_btn)
+
+        html_btn = QPushButton("🌐 Export to HTML")
+        html_btn.setObjectName("primaryBtn")
+        html_btn.clicked.connect(self._export_html)
+        btn_row.addWidget(html_btn)
+        layout.addLayout(btn_row)
+
+        self.log_lbl = QLabel("")
+        self.log_lbl.setObjectName("progressInfo")
+        layout.addWidget(self.log_lbl)
+
+    def _get_data(self):
+        c = self.ds.db.cursor()
+        c.execute("SELECT artist, album, year, type, genre, lyr_status, bpm, key, mood FROM releases ORDER BY artist, year")
+        return c.fetchall()
+
+    def _export_csv(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Save CSV", "musicwatcher_library.csv", "CSV Files (*.csv)")
+        if not path: return
+
+        rows = self._get_data()
+        try:
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(["Artist", "Album", "Year", "Type", "Genre", "Lyrics", "BPM", "Key", "Mood"])
+                for r in rows:
+                    w.writerow([r["artist"], r["album"], r["year"], r["type"], r["genre"], r["lyr_status"], r["bpm"], r["key"], r["mood"]])
+            self.log_lbl.setText(f"✔ Exported {len(rows)} releases to CSV successfully!")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+
+    def _export_html(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Save HTML", "musicwatcher_library.html", "HTML Files (*.html)")
+        if not path: return
+
+        rows = self._get_data()
+        try:
+            html = "<html><head><style>body{font-family:sans-serif;background:#1a1a2e;color:#e0e0f0;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #444;padding:8px;text-align:left;}th{background:#3a2a6a;}</style></head><body>"
+            html += "<h1>🎵 MusicWatcher Library Export</h1>"
+            html += f"<p><b>Total Releases:</b> {len(rows)}</p>"
+            html += "<table><tr><th>Artist</th><th>Album</th><th>Year</th><th>Type</th><th>Genre</th><th>BPM</th><th>Key</th><th>Mood</th></tr>"
+
+            for r in rows:
+                html += f"<tr><td>{r['artist']}</td><td>{r['album']}</td><td>{r['year']}</td><td>{r['type']}</td><td>{r['genre']}</td><td>{r['bpm'] or ''}</td><td>{r['key'] or ''}</td><td>{r['mood'] or ''}</td></tr>"
+
+            html += "</table></body></html>"
+
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(html)
+            self.log_lbl.setText(f"✔ Exported {len(rows)} releases to HTML successfully!")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))

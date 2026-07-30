@@ -61,15 +61,18 @@ class ScannerThread(QThread, PausableMixin):
                     raw_a=tags["artist"]; low_a=raw_a.lower()
                     album=tags["album"]; year=tags["year"]
                     genre=tags.get("genre","")
+                    mbid=tags.get("mbid","") # NEW: Extract MBID here
                     with lib_lk:
                         name_map[low_a]=(canonical_artist(name_map[low_a],raw_a)
                                          if low_a in name_map else raw_a)
                         key=(low_a,album.lower())
                         album_files[key].append(str(futures[fut]))
                         if key not in album_data:
-                            album_data[key]=(album,year,genre)
+                            album_data[key]=(album,year,genre,mbid) # Store MBID
                         elif genre and not album_data[key][2]:
-                            album_data[key]=(album,year,genre)
+                            album_data[key]=(album,year,genre,mbid)
+                        elif mbid and not album_data[key][3]:
+                            album_data[key]=(album,year,genre,mbid)
                         art_set.add(low_a); alb_set.add(key)
                 elapsed=max(0.001,time.monotonic()-self._start)
                 self.progress.emit(done,total,len(art_set),len(alb_set),
@@ -80,14 +83,14 @@ class ScannerThread(QThread, PausableMixin):
             self.progress.emit(total,total,len(art_set),len(alb_set),total/e,"")
 
         library:dict=defaultdict(list)
-        for (low_a,alb_low),(disp_alb,year,genre) in album_data.items():
+        for (low_a,alb_low),(disp_alb,year,genre,mbid) in album_data.items(): # Pull MBID out here
             canonical=name_map.get(low_a,low_a)
             files=album_files[(low_a,alb_low)]
             lyr=album_lyrics_status(files)
             if self.ds.settings.get("translate_titles"):
                 disp_alb=translate_if_needed(disp_alb)
             library[canonical].append({
-                "album":disp_alb,"year":year,"type":"","mbid":"",
+                "album":disp_alb,"year":year,"type":"","mbid":mbid, # Use the MBID variable
                 "genre":genre,"files":files,"lyr_status":lyr,
             })
 

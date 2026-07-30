@@ -252,8 +252,11 @@ def extract_tags(fp: Path) -> dict | None:
     year_r  = get("date","year","originaldate")
     year    = year_r[:4] if year_r and len(year_r)>=4 else (year_r or UNKNOWN)
     genre   = get("genre") or ""
+    mbid = get("musicbrainz_albumid") or ""
+    artist_mbid = get("musicbrainz_artistid") or ""
     return {"artist":artist,"album":album,"title":title,
-            "year":year,"genre":genre,"duration":get_duration(fp),"path":str(fp)}
+            "year":year,"genre":genre,"duration":get_duration(fp),"path":str(fp),
+            "mbid":mbid, "artist_mbid":artist_mbid}
 
 def check_squid_health(ds):
     def _check():

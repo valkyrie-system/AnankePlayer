@@ -11,7 +11,7 @@ class DataStore:
         self.db.row_factory = sqlite3.Row
         self._create_tables()
 
-        self.library:   dict = {}
+        self.library:   dict = defaultdict(list)
         self.mb_cache:  dict = {}
         self.pop_cache: dict = {}
         self.blacklist: set  = set()
@@ -38,6 +38,9 @@ class DataStore:
             "lastfm_session_key":"",
             "listenbrainz_token":"",  # NEW
             "slskd_url":"http://localhost:5030", # NEW
+            "external_player": "strawberry", # NEW: External player executable
+            "auto_organize": False, # NEW: Auto-organize files in watch folder
+            "save_art_to_folders": True, #NEW: save album and artist art more accurately to folders
             "slskd_key":"" # NEW
         }
         self._load()
@@ -50,7 +53,7 @@ class DataStore:
             name TEXT PRIMARY KEY, blacklist BOOLEAN, whitelist BOOLEAN, favorite BOOLEAN)""")
         c.execute("""CREATE TABLE IF NOT EXISTS releases (
             id INTEGER PRIMARY KEY AUTOINCREMENT, artist TEXT, album TEXT, year TEXT, type TEXT,
-            mbid TEXT, genre TEXT, files TEXT, lyr_status TEXT)""")
+            mbid TEXT, genre TEXT, files TEXT, lyr_status TEXT, bpm INTEGER, key TEXT, mood TEXT, is_fake_flac BOOLEAN)""")
         c.execute("""CREATE TABLE IF NOT EXISTS mb_cache (
             artist TEXT PRIMARY KEY, data TEXT)""")
         c.execute("""CREATE TABLE IF NOT EXISTS pop_cache (
@@ -63,6 +66,28 @@ class DataStore:
 
     def _load(self):
         c = self.db.cursor()
+
+        # Migration: Add columns individually so one failing doesn't skip the others
+        try:
+            c.execute("ALTER TABLE releases ADD COLUMN bpm INTEGER")
+            self.db.commit()
+        except Exception: pass
+
+        try:
+            c.execute("ALTER TABLE releases ADD COLUMN key TEXT")
+            self.db.commit()
+        except Exception: pass
+
+        try:
+            c.execute("ALTER TABLE releases ADD COLUMN mood TEXT")
+            self.db.commit()
+        except Exception: pass
+
+        try:
+            c.execute("ALTER TABLE releases ADD COLUMN is_fake_flac BOOLEAN")
+            self.db.commit()
+        except Exception: pass
+
         c.execute("SELECT COUNT(*) FROM releases")
         if c.fetchone()[0] == 0 and self._p("library.csv").exists():
             self._migrate_library_csv()
@@ -72,15 +97,15 @@ class DataStore:
             try: self.settings.update(json.loads(p.read_text()))
             except Exception: pass
 
-        self.library = defaultdict(list)
-        c.execute("SELECT artist, album, year, type, mbid, genre, files, lyr_status FROM releases")
+        c.execute("SELECT artist, album, year, type, mbid, genre, files, lyr_status, bpm, key, mood, is_fake_flac FROM releases")
         for row in c.fetchall():
             entry = {"album": row["album"], "year": row["year"], "type": row["type"],
                      "mbid": row["mbid"], "genre": row["genre"],
                      "files": json.loads(row["files"]) if row["files"] else [],
-                     "lyr_status": row["lyr_status"]}
+                     "lyr_status": row["lyr_status"],
+                     "bpm": row["bpm"], "key": row["key"], "mood": row["mood"],
+                     "is_fake_flac": bool(row["is_fake_flac"]) if row["is_fake_flac"] is not None else False}
             self.library[row["artist"]].append(entry)
-        self.library = dict(self.library)
 
         c.execute("SELECT artist, data FROM mb_cache")
         self.mb_cache = {row["artist"]: json.loads(row["data"]) for row in c.fetchall()}
@@ -94,6 +119,7 @@ class DataStore:
             if row["whitelist"]: self.whitelist.add(row["name"])
             if row["favorite"]: self.favorites.add(row["name"])
 
+        self.library = dict(self.library)
         self.le = LearningEngine()
         self._make_backup()
 
@@ -148,8 +174,8 @@ class DataStore:
             for r in releases:
                 rows.append((artist, r.get("album",""), r.get("year",""), r.get("type",""),
                              r.get("mbid",""), r.get("genre",""), json.dumps(r.get("files",[])),
-                             r.get("lyr_status","")))
-        c.executemany("INSERT INTO releases (artist, album, year, type, mbid, genre, files, lyr_status) VALUES (?,?,?,?,?,?,?,?)", rows)
+                             r.get("lyr_status",""), r.get("bpm"), r.get("key"), r.get("mood"), r.get("is_fake_flac", False)))
+        c.executemany("INSERT INTO releases (artist, album, year, type, mbid, genre, files, lyr_status, bpm, key, mood, is_fake_flac) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", rows)
         self.db.commit()
 
     def save_new_releases(self, nr: dict):
