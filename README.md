@@ -1,11 +1,10 @@
-
-***
-
 # 🎵 Anankê Player
 
 ![Ananke Player Logo](AnankePlayer.png)
 
 **Anankê Player** is a comprehensive, self-improving desktop music library manager built with PyQt6. It scans your local audio collection, enriches it with metadata from MusicBrainz, Last.fm, and ListenBrainz, fetches synced lyrics, downloads album artwork, detects duplicates by audio-content hashing, and provides a beautiful, adaptive UI for exploring your collection.
+
+> *“Anankê was the primordial goddess (protogenos) of necessity, compulsion, and inevitability. In the Orphic cosmogony, she and her mate Khronos (Time) crushed the primal egg of creation, splitting it into earth, heaven, and sea to form the ordered universe. Just as Anankê brought order to ancient chaos, Anankê Player brings order to your local music collection.”*
 
 > Python 3.10+ · Linux / Windows / macOS
 
@@ -19,6 +18,7 @@
 - **Tree and Grid views** with true wrapping `FlowLayout` and embedded artwork extraction.
 - **Watch folders** mode — auto-rescans on file changes, with optional auto-organize.
 - **List Filters**: Instantly filter your Library and New Releases tabs by Favorites, Whitelist, or Blacklist.
+- **Vertical Sidebar Navigation**: A modern, fixed-width sidebar replaces traditional tabs for smoother navigation and more screen real estate.
 
 ### 🎤 Lyrics & Artwork
 - Fetches **synced (.lrc)** and **plain (.txt)** lyrics from [lrclib.net](https://lrclib.net).
@@ -48,6 +48,8 @@
 - **MPRIS2 integration** on Linux (media keys, desktop controls).
 - **Last.fm scrobbling** & **ListenBrainz submitting**.
 - **30-sec Previews**: Search and play 30-second iTunes/Deezer previews directly in the unified player bar.
+- **Embedded projectM Visualizer**: A 3-pane collection view with an integrated projectM visualizer pane that automatically routes system audio and features a fullscreen overlay UI with track info and controls.
+- **Floating "Now Playing" Desktop Widget**: A borderless, always-on-top desktop overlay that displays current album art, track name, and scrolling synced lyrics, acting like a mini Spotify-style overlay while you work.
 
 ---
 
@@ -61,12 +63,12 @@ pip install PyQt6 mutagen requests plyer deep-translator librosa numpy
 *(Optional: `psutil` for better hardware detection, `PyQt6-Qt6-DBus` for Linux MPRIS media keys, `PyQt6-Qt6-Multimedia` for audio playback/previews).*
 
 ### 2. Launch the App
-Navigate to the `musicwatche` folder and run:
+Navigate to the `anake_player` folder and run:
 ```bash
 python main.py
 ```
 
-On first launch, MusicWatcher will detect your hardware, optimize FFmpeg/VAAPI environment variables, and create `~/.musicwatcher/` with default settings.
+On first launch, Anankê Player will detect your hardware, optimize FFmpeg/VVAPI environment variables, and create `~/.anake_player/` with default settings.
 
 ---
 
@@ -77,7 +79,7 @@ To use the right-click "Auto-Download" feature, you need [slskd](https://github.
 1. **Download slskd** and run it once to generate `~/.local/share/slskd/slskd.yml`.
 2. **Configure `slskd.yml`**:
    * Set your Soulseek `username` and `password`.
-   * Set the `downloads` directory to match MusicWatcher's Watch Folder.
+   * Set the `downloads` directory to match Anankê Player's Watch Folder.
    * Generate an API key under the `web.api_keys` section.
 3. **Start slskd**: You can run it directly via `./slskd`, or set it up to run permanently in the background as a **systemd service**:
 
@@ -111,14 +113,14 @@ To use the right-click "Auto-Download" feature, you need [slskd](https://github.
    systemctl --user start slskd.service
    ```
 
-4. **Link to MusicWatcher**: Open MusicWatcher → ⚙ Settings → External Services. Enter the `slskd` URL (`http://localhost:5030`) and your API Key.
+4. **Link to Anankê Player**: Open Anankê Player → ⚙ Settings → External Services. Enter the `slskd` URL (`http://localhost:5030`) and your API Key.
 
 ---
 
 ## 📁 Project Structure
 
 ```text
-musicwatcher/
+anake_player/
 ├── main.py                  # Entry point
 ├── core/                    # DataStore, SQLite, LearningEngine, Hardware
 ├── services/                # External APIs (MusicBrainz, Last.fm, Soulseek, Lyrics)
@@ -127,12 +129,13 @@ musicwatcher/
 ```
 
 ### Data Directory
-All user data is safely stored in `~/.musicwatcher/`:
+All user data is safely stored in `~/.anake_player/`:
 ```text
-~/.musicwatcher/
-├── musicwatcher.db          # SQLite database (library, caches, lists)
+~/.anake_player/
+├── anake_player.db          # SQLite database (library, caches, lists)
 ├── settings.json            # User preferences
 ├── artwork/                 # Cached cover art
+├── projectm_presets/        # Auto-downloaded visualizer presets
 ├── learning/
 │   └── model.json           # Adaptive learning model state
 ├── backups/                 # Timestamped auto-backups (last 5 kept)
@@ -143,23 +146,23 @@ All user data is safely stored in `~/.musicwatcher/`:
 
 ## 🛠️ Packaging & Distribution
 
-MusicWatcher includes a PyInstaller spec file to easily build standalone executables.
+Anankê Player includes a PyInstaller spec file to easily build standalone executables.
 
 ### Build Native Executable
 ```bash
 pip install pyinstaller
-pyinstaller musicwatcher.spec
+pyinstaller anake_player.spec
 ```
-*Output: `dist/MusicWatcher/MusicWatcher` (or `.exe` on Windows).*
+*Output: `dist/AnankePlayer/AnankePlayer` (or `.exe` on Windows).*
 
 ### Build Linux AppImage
 Use the included `appimagetool` to wrap the PyInstaller output into a portable AppImage:
 ```bash
-mkdir -p MusicWatcher.AppDir/usr/bin
-cp -r dist/MusicWatcher/* MusicWatcher.AppDir/usr/bin/
-printf '#!/bin/sh\nHERE="$(dirname "$(readlink -f "${0}")")"\nexec "${HERE}/usr/bin/MusicWatcher" "$@"\n' > MusicWatcher.AppDir/AppRun
-chmod +x MusicWatcher.AppDir/AppRun
-./appimagetool-x86_64.AppImage MusicWatcher.AppDir MusicWatcher.AppImage
+mkdir -p AnankePlayer.AppDir/usr/bin
+cp -r dist/AnankePlayer/* AnankePlayer.AppDir/usr/bin/
+printf '#!/bin/sh\nHERE="$(dirname "$(readlink -f "${0}")")"\nexec "${HERE}/usr/bin/AnankePlayer" "$@"\n' > AnankePlayer.AppDir/AppRun
+chmod +x AnankePlayer.AppDir/AppRun
+./appimagetool-x86_64.AppImage AnankePlayer.AppDir AnankePlayer.AppImage
 ```
 
 ---
@@ -192,14 +195,11 @@ Right now, the BPM, Key, and Mood are saved in the database, but not written to 
 ### 2. ⚙️ Customizable Library Organizer Format
 Right now, the Auto-Organizer forces the `Artist/Album/Track - Title.flac` structure. We could add a Settings text field where you can define your own format string (e.g., `[Year] Album/Track - Title` or `Artist - Album/Track. Title`), giving you total control over how your folders are structured.
 
-### 3. 🪟 Floating "Now Playing" Desktop Widget
-We can spawn a small, borderless, always-on-top window (frameless `QWidget`) that sits in the corner of your screen. It would display the current album art, track name, and a scrolling synced lyrics line, acting like a mini Spotify-style overlay while you work.
-
-### 4. 🧹 One-Click "Auto-Fix Missing Tags"
+### 3. 🧹 One-Click "Auto-Fix Missing Tags"
 If you have albums showing up as "Unknown Artist" or "Unknown Album", we can add a right-click menu option: **"🧠 Auto-Fix Tags from MusicBrainz"**. It would take the files, use the existing MBID (or do an acoustic fingerprint lookup), fetch the correct Artist/Album/Tracklist, and automatically write the tags in the background without needing to open the Picard window.
 
-### 5. 📱 Web / Mobile Companion (Advanced)
-We could spin up a tiny local Flask/FastAPI server inside MusicWatcher. This would expose an API on your local network (e.g., `http://192.168.1.x:5000`). You could open a browser on your phone, see your library, and hit "Play" to remotely control the MusicWatcher desktop player.
+### 4. 📱 Web / Mobile Companion (Advanced)
+We could spin up a tiny local Flask/FastAPI server inside Anankê Player. This would expose an API on your local network (e.g., `http://192.168.1.x:5000`). You could open a browser on your phone, see your library, and hit "Play" to remotely control the Anankê Player desktop player.
 
 ---
 
@@ -209,4 +209,6 @@ Built with [PyQt6](https://www.riverbankcomputing.com/software/pyqt/), [Mutagen]
 
 Released under the **MIT License**.
 
+> *"The gods do not fight against Ananke (Necessity)." — Suidas*
+>
 > “Where words fail, music speaks.” — Hans Christian Andersen
