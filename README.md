@@ -6,7 +6,7 @@
 
 > *“Anankê was the primordial goddess (protogenos) of necessity, compulsion, and inevitability. In the Orphic cosmogony, she and her mate Khronos (Time) crushed the primal egg of creation, splitting it into earth, heaven, and sea to form the ordered universe. Just as Anankê brought order to ancient chaos, Anankê Player brings order to your local music collection.”*
 
-> Python 3.10+ · Linux / Windows / macOS
+> Python 3.10+ · Linux / Windows (soon)
 
 ---
 
