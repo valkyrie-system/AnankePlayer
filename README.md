@@ -1,7 +1,7 @@
 
 ***
 
-# 🎵 MusicWatcher
+# 🎵 Anankê Player
 
 ![MusicWatcher Logo](MusicWatcher.png)
 
