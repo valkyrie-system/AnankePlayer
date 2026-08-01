@@ -3,9 +3,9 @@
 
 # 🎵 Anankê Player
 
-![MusicWatcher Logo](MusicWatcher.png)
+![Ananke Player Logo](AnankePlayer.png)
 
-**MusicWatcher** is a comprehensive, self-improving desktop music library manager built with PyQt6. It scans your local audio collection, enriches it with metadata from MusicBrainz, Last.fm, and ListenBrainz, fetches synced lyrics, downloads album artwork, detects duplicates by audio-content hashing, and provides a beautiful, adaptive UI for exploring your collection.
+**Anankê Player** is a comprehensive, self-improving desktop music library manager built with PyQt6. It scans your local audio collection, enriches it with metadata from MusicBrainz, Last.fm, and ListenBrainz, fetches synced lyrics, downloads album artwork, detects duplicates by audio-content hashing, and provides a beautiful, adaptive UI for exploring your collection.
 
 > Python 3.10+ · Linux / Windows / macOS
 
@@ -61,7 +61,7 @@ pip install PyQt6 mutagen requests plyer deep-translator librosa numpy
 *(Optional: `psutil` for better hardware detection, `PyQt6-Qt6-DBus` for Linux MPRIS media keys, `PyQt6-Qt6-Multimedia` for audio playback/previews).*
 
 ### 2. Launch the App
-Navigate to the `musicwatcher` folder and run:
+Navigate to the `musicwatche` folder and run:
 ```bash
 python main.py
 ```
